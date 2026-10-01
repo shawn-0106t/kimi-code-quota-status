@@ -101,7 +101,17 @@ golden 输入 payload 与期望值复刻自 `repos/kimi-planbar-tui`（只读参
 | 断网 LKG | 不可达 base_url 下缓存内容不变、无残留进程（30s fast-retry + 60s TTL 内自愈，≤90s） |
 | 非 managed OAuth | `error:"no-token"`/404 均只省略额度组，其余字段正常 |
 
-真机 footer 显示与"活跃会话 1 分钟自动更新"需在 Kimi Code CLI 会话内观察（`/reload-tui` 后保持会话活跃，1 分钟内缓存 mtime/`fetchedAt` 更新即生效）；本记录执行时 OAuth token 已过期且 CLI 未续期，该两条由机制验收（detached 回填、TTL/回拨）覆盖，待用户会话中最终确认。
+### 实装验收（2026-10-01 22:43，用户 CLI 会话内确认通过）
+
+| 项 | 结果 |
+|---|---|
+| 部署 | exe 部署至 `~/.kimi-code/bin/quota-status.exe`（脱离 target/，cargo clean 不影响；**重新构建后需重新复制到该路径**，当前二进制 1,793,024 字节，review 修复后 rebuild，仍 ≈1.7MB）；tui.toml 已配置 `[status_line] command`（TOML 解析验证通过，备份 `~/.kimi-code/backups/tui.toml.20261001-223956.bak`） |
+| `--test-fetch` 自检（§10.3） | `error: null`，fiveHour/week/resetAt 均有值，`fetchedAt` 实时；运行前后缓存 mtime/内容不变，无副作用 |
+| footer 显示（§10.4 条 3 前半） | `/reload-tui` 后 footer 第 1 行正确显示 `permissionMode \| model \| thinking \| 5h N% (rst …) · week N% (rst …) \| gitBranch`，颜色/分隔符/跨天 reset 格式符合 §7；真机 console 下 CONOUT$ 宽度查询正常（行完整、未误触发降级，REVIEW3 Major 1 修复点复核通过） |
+| 1 分钟自动更新（§10.4 条 3 后半） | 活跃会话中自动回填真机成立：缓存 `fetchedAt` 22:35:34 → 22:43:26 连续推进，fiveHour percent 43→45 实时变化（TTL 60s + mtime 回拨 + detached refresh） |
+| `/theme` 重写演练（§10.4 条 6） | 本轮未实际触发：验收期间 tui.toml mtime 保持 22:40:34、段内注释仍在，host 未整文件重写；command 值 round-trip 保真仍以当前 main 源码（config.ts:298-312）为准，旧版本整段丢失的恢复步骤见故障排查① |
+
+渲染边界抽样（实装当日）：空 stdin → exit 0 按空 payload 降级；yolo→红、gitBranch null→省略；空锚定缓存 → mtime 回拨（精确 now−30s）→ detached refresh → 原子写缓存 401 字节，全链路观测通过。渲染端到端 20 次均值 ≈44ms（Git Bash 管道测量，含 shell fork 开销，为高估方向）< 50ms。
 
 ## 已知限制
 
