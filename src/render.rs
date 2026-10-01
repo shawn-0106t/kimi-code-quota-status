@@ -48,10 +48,10 @@ pub fn thinking_from_config(config_text: Option<&str>, model: Option<&str>) -> O
     if th.and_then(|t| t.get("enabled")).and_then(|v| v.as_bool()) == Some(false) {
         return Some(Thinking::Off);
     }
-    if let Some(eff) = th.and_then(|t| t.get("effort")).and_then(|v| v.as_str()) {
-        if !eff.is_empty() {
-            return Some(Thinking::Effort(eff.to_string()));
-        }
+    if let Some(eff) = th.and_then(|t| t.get("effort")).and_then(|v| v.as_str())
+        && !eff.is_empty()
+    {
+        return Some(Thinking::Effort(eff.to_string()));
     }
     let model = model?;
     let models = val.get("models")?.as_table()?;
@@ -91,10 +91,7 @@ pub fn quota_color(percent: f64, green_below: f64, yellow_below: f64) -> &'stati
 
 /// reset 后缀（SPEC §7.3）：同日 ` (rst HH:MM)`；跨天 ` (rst MM/DD HH:MM)`。
 /// 本地时区；resetAt 解析失败/缺失 -> None（无后缀）。
-pub fn reset_suffix(
-    reset_at: Option<&DateTime<Local>>,
-    now: DateTime<Local>,
-) -> Option<String> {
+pub fn reset_suffix(reset_at: Option<&DateTime<Local>>, now: DateTime<Local>) -> Option<String> {
     let dt = *reset_at?;
     let same_day = dt.date_naive() == now.date_naive();
     Some(if same_day {
@@ -131,37 +128,37 @@ struct QuotaPart {
 
 /// 额度组缓存侧取数（SPEC §7.1）：对应段存在且开启才进组；
 /// 缓存含 error（理论不发生，防御）视为无数据。
-fn quota_parts<'a>(cached: Option<&'a QuotaResult>, cfg: &Config) -> Vec<QuotaPart> {
+fn quota_parts(cached: Option<&QuotaResult>, cfg: &Config) -> Vec<QuotaPart> {
     let Some(r) = cached.filter(|r| r.error.is_none()) else {
         return Vec::new();
     };
     let mut parts = Vec::new();
-    if cfg.quota.five_hour {
-        if let Some(seg) = &r.five_hour {
-            parts.push(QuotaPart {
-                label: "5h",
-                percent: seg.percent,
-                reset_at: seg.reset_at,
-            });
-        }
+    if cfg.quota.five_hour
+        && let Some(seg) = &r.five_hour
+    {
+        parts.push(QuotaPart {
+            label: "5h",
+            percent: seg.percent,
+            reset_at: seg.reset_at,
+        });
     }
-    if cfg.quota.week {
-        if let Some(seg) = &r.week {
-            parts.push(QuotaPart {
-                label: "week",
-                percent: seg.percent,
-                reset_at: seg.reset_at,
-            });
-        }
+    if cfg.quota.week
+        && let Some(seg) = &r.week
+    {
+        parts.push(QuotaPart {
+            label: "week",
+            percent: seg.percent,
+            reset_at: seg.reset_at,
+        });
     }
-    if cfg.quota.month {
-        if let Some(seg) = &r.month {
-            parts.push(QuotaPart {
-                label: "month",
-                percent: seg.percent,
-                reset_at: seg.reset_at,
-            });
-        }
+    if cfg.quota.month
+        && let Some(seg) = &r.month
+    {
+        parts.push(QuotaPart {
+            label: "month",
+            percent: seg.percent,
+            reset_at: seg.reset_at,
+        });
     }
     parts
 }
@@ -192,17 +189,17 @@ fn render_variant(
         }
         match field {
             Field::PermissionMode => {
-                if let Some(mode) = payload.get("permissionMode").and_then(|v| v.as_str()) {
-                    if !mode.is_empty() {
-                        segs.push(span(permission_mode_color(mode), mode));
-                    }
+                if let Some(mode) = payload.get("permissionMode").and_then(|v| v.as_str())
+                    && !mode.is_empty()
+                {
+                    segs.push(span(permission_mode_color(mode), mode));
                 }
             }
             Field::Model => {
-                if let Some(model) = payload.get("model").and_then(|v| v.as_str()) {
-                    if !model.is_empty() {
-                        segs.push(span(CYAN, model));
-                    }
+                if let Some(model) = payload.get("model").and_then(|v| v.as_str())
+                    && !model.is_empty()
+                {
+                    segs.push(span(CYAN, model));
                 }
             }
             // thinking（off 灰 / effort cyan，SPEC §7.2）
@@ -221,32 +218,32 @@ fn render_variant(
                     } else {
                         String::new()
                     };
-                    parts.push(span(color, &format!("{} {}%{}", p.label, fmt_percent(p.percent), reset)));
+                    parts.push(span(
+                        color,
+                        &format!("{} {}%{}", p.label, fmt_percent(p.percent), reset),
+                    ));
                 }
                 // booster 默认不渲染（SPEC §1.2/§7.1）；开启且 Ready 时以 cyan
                 // 显示余额（元）。格式取纯 ASCII（避免 ¥ 等符号在非 UTF-8
                 // 终端的兼容性问题）
-                if cfg.quota.booster {
-                    if let Some(r) = cached.filter(|r| r.error.is_none()) {
-                        if let Some(extra) = &r.extra {
-                            if extra.state == ExtraState::Ready {
-                                if let Some(cents) = extra.balance_cents {
-                                    let yuan = cents as f64 / 100.0;
-                                    parts.push(span(CYAN, &format!("boost {yuan:.2}")));
-                                }
-                            }
-                        }
-                    }
+                if cfg.quota.booster
+                    && let Some(r) = cached.filter(|r| r.error.is_none())
+                    && let Some(extra) = &r.extra
+                    && extra.state == ExtraState::Ready
+                    && let Some(cents) = extra.balance_cents
+                {
+                    let yuan = cents as f64 / 100.0;
+                    parts.push(span(CYAN, &format!("boost {yuan:.2}")));
                 }
                 if !parts.is_empty() {
                     segs.push(parts.join(SEP_PART));
                 }
             }
             Field::GitBranch if opts.git => {
-                if let Some(branch) = payload.get("gitBranch").and_then(|v| v.as_str()) {
-                    if !branch.is_empty() {
-                        segs.push(span(MAGENTA, branch));
-                    }
+                if let Some(branch) = payload.get("gitBranch").and_then(|v| v.as_str())
+                    && !branch.is_empty()
+                {
+                    segs.push(span(MAGENTA, branch));
                 }
             }
             Field::GitBranch => {}
@@ -288,10 +285,54 @@ pub fn render_line(
     now: DateTime<Local>,
 ) -> String {
     // 全量（reset 开关关闭则天然无后缀）；降级只删不重排
-    let full = render_variant(payload, cached, cfg, thinking, now, &VariantOpts { reset: cfg.quota.reset_time, git: true, quota_only: false });
-    let no_reset = render_variant(payload, cached, cfg, thinking, now, &VariantOpts { reset: false, git: true, quota_only: false });
-    let no_git = render_variant(payload, cached, cfg, thinking, now, &VariantOpts { reset: false, git: false, quota_only: false });
-    let quota_only = render_variant(payload, cached, cfg, thinking, now, &VariantOpts { reset: false, git: false, quota_only: true });
+    let full = render_variant(
+        payload,
+        cached,
+        cfg,
+        thinking,
+        now,
+        &VariantOpts {
+            reset: cfg.quota.reset_time,
+            git: true,
+            quota_only: false,
+        },
+    );
+    let no_reset = render_variant(
+        payload,
+        cached,
+        cfg,
+        thinking,
+        now,
+        &VariantOpts {
+            reset: false,
+            git: true,
+            quota_only: false,
+        },
+    );
+    let no_git = render_variant(
+        payload,
+        cached,
+        cfg,
+        thinking,
+        now,
+        &VariantOpts {
+            reset: false,
+            git: false,
+            quota_only: false,
+        },
+    );
+    let quota_only = render_variant(
+        payload,
+        cached,
+        cfg,
+        thinking,
+        now,
+        &VariantOpts {
+            reset: false,
+            git: false,
+            quota_only: true,
+        },
+    );
 
     // 逐级尝试直到可容纳；全超 -> 原样输出（full）
     for cand in [&full, &no_reset, &no_git, &quota_only] {
@@ -393,7 +434,10 @@ enabled = false
 display_name = "Kimi"
 overrides.default_effort = "high"
 "#;
-        assert_eq!(thinking_from_config(Some(text), Some("Kimi")), Some(Thinking::Off));
+        assert_eq!(
+            thinking_from_config(Some(text), Some("Kimi")),
+            Some(Thinking::Off)
+        );
 
         let text = "[thinking]\neffort = \"medium\"\n";
         assert_eq!(
@@ -425,7 +469,10 @@ default_effort = "low"
         );
 
         // 全缺 -> 省略
-        assert_eq!(thinking_from_config(Some("[thinking]\n"), Some("Kimi")), None);
+        assert_eq!(
+            thinking_from_config(Some("[thinking]\n"), Some("Kimi")),
+            None
+        );
         assert_eq!(thinking_from_config(None, Some("Kimi")), None);
         // config.toml 整体非法 -> 省略
         assert_eq!(thinking_from_config(Some("not toml"), Some("Kimi")), None);
@@ -436,17 +483,35 @@ default_effort = "low"
     fn full_line_layout() {
         let cfg = Config::default();
         let c = cached_full();
-        let line = render_line(&payload_full(), Some(&c), &cfg, Some(&Thinking::Effort("high".into())), 200, now());
+        let line = render_line(
+            &payload_full(),
+            Some(&c),
+            &cfg,
+            Some(&Thinking::Effort("high".into())),
+            200,
+            now(),
+        );
         assert!(line.starts_with("\x1b[31myolo\x1b[0m"), "yolo 红: {line:?}");
         assert!(line.contains("\x1b[36mKimi\x1b[0m"), "model cyan");
         assert!(line.contains("\x1b[36mhigh\x1b[0m"), "thinking cyan");
         assert!(line.contains("\x1b[32m5h 21%"), "5h 绿 + 无空格拼接");
         assert!(line.contains("(rst 00:00)"), "同日 reset");
         assert!(line.contains("\x1b[33mweek 68%"), "68 黄");
-        assert!(line.contains("\x1b[32mmonth 43% (rst 11/05 00:00)"), "跨天 reset: {line:?}");
+        assert!(
+            line.contains("\x1b[32mmonth 43% (rst 11/05 00:00)"),
+            "跨天 reset: {line:?}"
+        );
         assert!(line.ends_with("\x1b[35mmain\x1b[0m"), "git magenta");
-        assert_eq!(line.matches(" \x1b[90m|\x1b[0m ").count(), 4, "段间 4 个灰 |");
-        assert_eq!(line.matches(" \x1b[90m·\x1b[0m ").count(), 2, "组内 2 个灰 ·");
+        assert_eq!(
+            line.matches(" \x1b[90m|\x1b[0m ").count(),
+            4,
+            "段间 4 个灰 |"
+        );
+        assert_eq!(
+            line.matches(" \x1b[90m·\x1b[0m ").count(),
+            2,
+            "组内 2 个灰 ·"
+        );
         // 行内不含 contextTokens / maxContextTokens（SPEC §3.4）
         assert!(!line.contains("context"));
     }
@@ -457,32 +522,67 @@ default_effort = "low"
     fn width_degradation_ladder() {
         let cfg = Config::default();
         let c = cached_full();
-        let full = render_line(&payload_full(), Some(&c), &cfg, Some(&Thinking::Effort("high".into())), 400, now());
+        let full = render_line(
+            &payload_full(),
+            Some(&c),
+            &cfg,
+            Some(&Thinking::Effort("high".into())),
+            400,
+            now(),
+        );
         assert!(full.contains("(rst"), "全量含 reset");
         assert!(full.contains("\x1b[35mmain"), "全量含 git");
 
         // 第 1 级：宽度 < 全量 -> 丢 reset
         let w1 = visible_width(&full) as u32 - 1;
-        let l1 = render_line(&payload_full(), Some(&c), &cfg, Some(&Thinking::Effort("high".into())), w1, now());
+        let l1 = render_line(
+            &payload_full(),
+            Some(&c),
+            &cfg,
+            Some(&Thinking::Effort("high".into())),
+            w1,
+            now(),
+        );
         assert!(!l1.contains("(rst"), "第 1 级丢 reset");
         assert!(l1.contains("\x1b[35mmain"), "第 1 级仍含 git");
 
         // 第 2 级：再缩 -> 丢 gitBranch
         let w2 = visible_width(&l1) as u32 - 1;
-        let l2 = render_line(&payload_full(), Some(&c), &cfg, Some(&Thinking::Effort("high".into())), w2, now());
+        let l2 = render_line(
+            &payload_full(),
+            Some(&c),
+            &cfg,
+            Some(&Thinking::Effort("high".into())),
+            w2,
+            now(),
+        );
         assert!(!l2.contains("\x1b[35m"), "第 2 级丢 git");
         assert!(l2.contains("5h"), "第 2 级仍含额度组");
         assert!(l2.contains("\x1b[36mKimi"), "第 2 级仍含 model");
 
         // 第 3 级：只留额度组
         let w3 = visible_width(&l2) as u32 - 1;
-        let l3 = render_line(&payload_full(), Some(&c), &cfg, Some(&Thinking::Effort("high".into())), w3, now());
+        let l3 = render_line(
+            &payload_full(),
+            Some(&c),
+            &cfg,
+            Some(&Thinking::Effort("high".into())),
+            w3,
+            now(),
+        );
         assert!(l3.contains("5h"), "第 3 级含额度组");
         assert!(!l3.contains("\x1b[36mKimi"), "第 3 级丢 model");
         assert!(l3.starts_with("\x1b[32m5h"), "第 3 级以额度组开头");
 
         // 第 4 级：宽度极小 -> 原样输出（等于 full）
-        let l4 = render_line(&payload_full(), Some(&c), &cfg, Some(&Thinking::Effort("high".into())), 1, now());
+        let l4 = render_line(
+            &payload_full(),
+            Some(&c),
+            &cfg,
+            Some(&Thinking::Effort("high".into())),
+            1,
+            now(),
+        );
         assert_eq!(l4, full, "第 4 级原样输出交宿主截断");
     }
 
@@ -535,7 +635,14 @@ default_effort = "low"
 
         let mut err = cached_full();
         err.error = Some("HttpRequestException".into());
-        let line = render_line(&payload_full(), Some(&err), &Config::default(), None, 400, now());
+        let line = render_line(
+            &payload_full(),
+            Some(&err),
+            &Config::default(),
+            None,
+            400,
+            now(),
+        );
         assert!(!line.contains("5h"), "error 缓存不渲染额度组");
         assert!(line.contains("\x1b[31myolo"), "其余字段照常");
     }
@@ -552,12 +659,22 @@ default_effort = "low"
     #[test]
     fn booster_render_switch_and_ascii_format() {
         let c = cached_full(); // balanceCents 1235 -> 12.35 元
-        let off = render_line(&payload_full(), Some(&c), &Config::default(), None, 400, now());
+        let off = render_line(
+            &payload_full(),
+            Some(&c),
+            &Config::default(),
+            None,
+            400,
+            now(),
+        );
         assert!(!off.contains("boost"), "booster 默认不渲染");
 
         let cfg = parse_minimal("[render.quota]\nbooster = true\n");
         let on = render_line(&payload_full(), Some(&c), &cfg, None, 400, now());
-        assert!(on.contains("\x1b[36mboost 12.35\x1b[0m"), "booster ASCII 余额: {on:?}");
+        assert!(
+            on.contains("\x1b[36mboost 12.35\x1b[0m"),
+            "booster ASCII 余额: {on:?}"
+        );
 
         // 非 Ready（NoData/NotActivated）不显示
         let mut nodata = cached_full();

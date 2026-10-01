@@ -93,10 +93,10 @@ impl QuotaResult {
 /// base_url 覆盖链（SPEC §5.1）：env KIMI_CODE_BASE_URL > quota-bar.toml
 /// [network] base_url > 默认。`configured` 即 config 解析出的 base_url。
 pub fn resolve_base_url(configured: Option<&str>) -> String {
-    if let Ok(v) = std::env::var("KIMI_CODE_BASE_URL") {
-        if !v.is_empty() {
-            return v;
-        }
+    if let Ok(v) = std::env::var("KIMI_CODE_BASE_URL")
+        && !v.is_empty()
+    {
+        return v;
     }
     configured
         .filter(|s| !s.is_empty())
@@ -179,10 +179,10 @@ pub fn parse_payload(root: &Value, now: DateTime<Local>) -> QuotaResult {
         r.five_hour = Some(parse_segment(detail));
     }
     // 周段：顶层 root.usage（对象才解析，SPEC §6.5）
-    if let Some(u) = root.get("usage") {
-        if u.is_object() {
-            r.week = Some(parse_segment(u));
-        }
+    if let Some(u) = root.get("usage")
+        && u.is_object()
+    {
+        r.week = Some(parse_segment(u));
     }
     // 月段：root.totalQuota，limit 缺失/为 0/非有限值（NaN 等）不产生段
     //（SPEC §6.6/§6.3；NaN != 0.0 恒真，须显式排除）
@@ -198,15 +198,14 @@ pub fn parse_payload(root: &Value, now: DateTime<Local>) -> QuotaResult {
 
 /// 5h 段选窗（SPEC §6.4）：优先 window.duration == 300 且 window.timeUnit ==
 /// "TIME_UNIT_MINUTE" 的元素（duration 兼容字符串建模），找不到回落 limits[0]。
-fn pick_five_hour<'a>(limits: &'a [Value]) -> Option<&'a Value> {
+fn pick_five_hour(limits: &[Value]) -> Option<&Value> {
     limits
         .iter()
         .find(|l| {
             l.get("window")
                 .map(|w| {
                     get_f64(w, "duration") == 300.0
-                        && w.get("timeUnit").and_then(Value::as_str)
-                            == Some("TIME_UNIT_MINUTE")
+                        && w.get("timeUnit").and_then(Value::as_str) == Some("TIME_UNIT_MINUTE")
                 })
                 .unwrap_or(false)
         })
@@ -248,10 +247,10 @@ fn parse_reset_time(s: &str) -> Option<DateTime<Local>> {
         }
     }
     for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"] {
-        if let Ok(n) = chrono::NaiveDateTime::parse_from_str(s, fmt) {
-            if let Some(d) = n.and_local_timezone(Local).single() {
-                return Some(d);
-            }
+        if let Ok(n) = chrono::NaiveDateTime::parse_from_str(s, fmt)
+            && let Some(d) = n.and_local_timezone(Local).single()
+        {
+            return Some(d);
         }
     }
     None
@@ -334,7 +333,8 @@ mod tests {
     /// 本机时区 +08:00 下分别序列化为 "2030-01-01T08:00:00+08:00" 与
     /// "2030-01-01T08:00:00.123456789+08:00"。
     fn at_fracs() -> DateTime<Local> {
-        Local.timestamp_millis_opt(1_893_456_000_000)
+        Local
+            .timestamp_millis_opt(1_893_456_000_000)
             .unwrap()
             .with_nanosecond(123_456_789)
             .unwrap()
@@ -387,7 +387,10 @@ mod tests {
 
         // Missing / non-object wallet -> NotActivated too
         assert_eq!(parse_extra(None).state, ExtraState::NotActivated);
-        assert_eq!(parse_extra(Some(&json!("nope"))).state, ExtraState::NotActivated);
+        assert_eq!(
+            parse_extra(Some(&json!("nope"))).state,
+            ExtraState::NotActivated
+        );
     }
 
     /// SPEC 6.8：isEnabled 防御仅严格布尔 false 触发；字符串 "false" 与数字 0
@@ -540,7 +543,10 @@ mod tests {
         let no_field = parse_payload(&json!({"totalQuota": {"used": "43"}}), at_fracs());
         assert!(no_field.month.is_none());
 
-        let zero = parse_payload(&json!({"totalQuota": {"used": "43", "limit": 0}}), at_fracs());
+        let zero = parse_payload(
+            &json!({"totalQuota": {"used": "43", "limit": 0}}),
+            at_fracs(),
+        );
         assert!(zero.month.is_none());
 
         // totalQuota 非对象同样不产生段

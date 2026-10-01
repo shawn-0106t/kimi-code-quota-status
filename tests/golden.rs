@@ -11,7 +11,7 @@
 // 序列化与 --test-fetch 输出共用 QuotaResult::to_pretty_json。
 
 use chrono::{DateTime, Local, TimeZone, Timelike};
-use quota_status::quota::{parse_payload, QuotaResult};
+use quota_status::quota::{QuotaResult, parse_payload};
 use serde_json::Value;
 
 const GOLDEN_DIR: &str = "testdata/golden";
@@ -24,7 +24,8 @@ fn at_zero() -> DateTime<Local> {
 }
 
 fn at_fracs() -> DateTime<Local> {
-    Local.timestamp_millis_opt(1_893_456_000_000)
+    Local
+        .timestamp_millis_opt(1_893_456_000_000)
         .unwrap()
         .with_nanosecond(123_456_789)
         .unwrap()
@@ -57,40 +58,89 @@ fn must_parse(text: &str) -> Value {
 fn assert_matches(name: &str, got: &str, dir: &str) {
     let want = golden_text(dir, name);
     if got != want {
-        panic!(
-            "golden {name} mismatch:\n--- got ---\n{got}\n--- want ---\n{want}"
-        );
+        panic!("golden {name} mismatch:\n--- got ---\n{got}\n--- want ---\n{want}");
     }
 }
 
 /// 输入 payload（逐字拷贝自 quota_test.go:240-266）。
 fn payloads() -> Vec<(&'static str, &'static str)> {
     vec![
-        ("quota-success_full", r#"{"limits":[{"detail":{"used":"21","limit":"100","resetTime":"2030-01-01T00:00:00+08:00"}}],"usage":{"used":18.5,"limit":100,"resetTime":"2030-01-08 00:00:00 +08:00"},"boosterWallet":{"isEnabled":true,"balance":{"amountLeft":"1234567890"},"monthlyChargeLimitEnabled":true,"monthlyUsed":{"priceInCents":"4567"},"monthlyChargeLimit":{"priceInCents":10000}}}"#),
-        ("quota-mixed_string_number", r#"{"limits":[{"detail":{"used":"68","limit":"100","resetTime":"2030-01-01T00:00:00+08:00"}}],"usage":{"used":68,"limit":100}}"#),
-        ("quota-div_zero", r#"{"limits":[{"detail":{"used":"50","limit":"0"}}]}"#),
-        ("quota-neg_limit", r#"{"limits":[{"detail":{"used":"50","limit":-100}}]}"#),
-        ("quota-hostile_inf", r#"{"usage":{"used":"1e999","limit":1}}"#),
+        (
+            "quota-success_full",
+            r#"{"limits":[{"detail":{"used":"21","limit":"100","resetTime":"2030-01-01T00:00:00+08:00"}}],"usage":{"used":18.5,"limit":100,"resetTime":"2030-01-08 00:00:00 +08:00"},"boosterWallet":{"isEnabled":true,"balance":{"amountLeft":"1234567890"},"monthlyChargeLimitEnabled":true,"monthlyUsed":{"priceInCents":"4567"},"monthlyChargeLimit":{"priceInCents":10000}}}"#,
+        ),
+        (
+            "quota-mixed_string_number",
+            r#"{"limits":[{"detail":{"used":"68","limit":"100","resetTime":"2030-01-01T00:00:00+08:00"}}],"usage":{"used":68,"limit":100}}"#,
+        ),
+        (
+            "quota-div_zero",
+            r#"{"limits":[{"detail":{"used":"50","limit":"0"}}]}"#,
+        ),
+        (
+            "quota-neg_limit",
+            r#"{"limits":[{"detail":{"used":"50","limit":-100}}]}"#,
+        ),
+        (
+            "quota-hostile_inf",
+            r#"{"usage":{"used":"1e999","limit":1}}"#,
+        ),
         ("quota-hostile_nan", r#"{"usage":{"used":"NaN","limit":1}}"#),
         ("quota-nan_limit", r#"{"usage":{"used":"5","limit":"NaN"}}"#),
         ("quota-empty", r#"{}"#),
-        ("quota-limits_not_array", r#"{"limits":{"detail":{"used":"1","limit":"2"}}}"#),
+        (
+            "quota-limits_not_array",
+            r#"{"limits":{"detail":{"used":"1","limit":"2"}}}"#,
+        ),
         ("quota-detail_string", r#"{"limits":[{"detail":"nope"}]}"#),
         ("quota-usage_null", r#"{"usage":null}"#),
         ("quota-usage_string", r#"{"usage":"nope"}"#),
-        ("quota-disabled_wallet", r#"{"boosterWallet":{"isEnabled":false,"balance":{"amountLeft":"123456789"}}}"#),
-        ("quota-isenabled_string_false", r#"{"boosterWallet":{"isEnabled":"false","balance":{"amountLeft":"123456789"}}}"#),
-        ("quota-isenabled_zero", r#"{"boosterWallet":{"isEnabled":0,"balance":{"amountLeft":"1500000"}}}"#),
+        (
+            "quota-disabled_wallet",
+            r#"{"boosterWallet":{"isEnabled":false,"balance":{"amountLeft":"123456789"}}}"#,
+        ),
+        (
+            "quota-isenabled_string_false",
+            r#"{"boosterWallet":{"isEnabled":"false","balance":{"amountLeft":"123456789"}}}"#,
+        ),
+        (
+            "quota-isenabled_zero",
+            r#"{"boosterWallet":{"isEnabled":0,"balance":{"amountLeft":"1500000"}}}"#,
+        ),
         ("quota-no_wallet", r#"{"boosterWallet":null}"#),
         ("quota-wallet_string", r#"{"boosterWallet":"nope"}"#),
-        ("quota-amount_frac_number", r#"{"boosterWallet":{"isEnabled":true,"balance":{"amountLeft":1500000.7}}}"#),
-        ("quota-amount_negative_round", r#"{"boosterWallet":{"isEnabled":true,"balance":{"amountLeft":"-1499999"}}}"#),
-        ("quota-amount_negative_round2", r#"{"boosterWallet":{"isEnabled":true,"balance":{"amountLeft":"-1500001"}}}"#),
-        ("quota-amount_huge", r#"{"boosterWallet":{"isEnabled":true,"balance":{"amountLeft":"9223372036854775807"}}}"#),
-        ("quota-nodata_monthly_on", r#"{"boosterWallet":{"isEnabled":true,"balance":{"amountLeft":"not-a-number"},"monthlyChargeLimitEnabled":true,"monthlyUsed":{"priceInCents":"4567"},"monthlyChargeLimit":{"priceInCents":10000}}}"#),
-        ("quota-monthly_off_but_present", r#"{"boosterWallet":{"isEnabled":true,"balance":{"amountLeft":"100000000"},"monthlyUsed":{"priceInCents":"4567"}}}"#),
-        ("quota-monthly_string_true", r#"{"boosterWallet":{"isEnabled":true,"balance":{"amountLeft":"100000000"},"monthlyChargeLimitEnabled":"true","monthlyUsed":{"priceInCents":"4567"}}}"#),
-        ("quota-reset_fraction", r#"{"limits":[{"detail":{"used":"1","limit":"3","resetTime":"2030-01-01T00:00:00.123456789+08:00"}}],"usage":{"used":"1","limit":"3","resetTime":"2030-01-02T00:00:00.500Z"}}"#),
+        (
+            "quota-amount_frac_number",
+            r#"{"boosterWallet":{"isEnabled":true,"balance":{"amountLeft":1500000.7}}}"#,
+        ),
+        (
+            "quota-amount_negative_round",
+            r#"{"boosterWallet":{"isEnabled":true,"balance":{"amountLeft":"-1499999"}}}"#,
+        ),
+        (
+            "quota-amount_negative_round2",
+            r#"{"boosterWallet":{"isEnabled":true,"balance":{"amountLeft":"-1500001"}}}"#,
+        ),
+        (
+            "quota-amount_huge",
+            r#"{"boosterWallet":{"isEnabled":true,"balance":{"amountLeft":"9223372036854775807"}}}"#,
+        ),
+        (
+            "quota-nodata_monthly_on",
+            r#"{"boosterWallet":{"isEnabled":true,"balance":{"amountLeft":"not-a-number"},"monthlyChargeLimitEnabled":true,"monthlyUsed":{"priceInCents":"4567"},"monthlyChargeLimit":{"priceInCents":10000}}}"#,
+        ),
+        (
+            "quota-monthly_off_but_present",
+            r#"{"boosterWallet":{"isEnabled":true,"balance":{"amountLeft":"100000000"},"monthlyUsed":{"priceInCents":"4567"}}}"#,
+        ),
+        (
+            "quota-monthly_string_true",
+            r#"{"boosterWallet":{"isEnabled":true,"balance":{"amountLeft":"100000000"},"monthlyChargeLimitEnabled":"true","monthlyUsed":{"priceInCents":"4567"}}}"#,
+        ),
+        (
+            "quota-reset_fraction",
+            r#"{"limits":[{"detail":{"used":"1","limit":"3","resetTime":"2030-01-01T00:00:00.123456789+08:00"}}],"usage":{"used":"1","limit":"3","resetTime":"2030-01-02T00:00:00.500Z"}}"#,
+        ),
     ]
 }
 
@@ -110,7 +160,12 @@ fn goldens_byte_for_byte() {
 #[test]
 fn error_goldens_byte_for_byte() {
     require_cn_timezone();
-    for kind in ["no-token", "HttpRequestException", "TaskCanceledException", "JsonException"] {
+    for kind in [
+        "no-token",
+        "HttpRequestException",
+        "TaskCanceledException",
+        "JsonException",
+    ] {
         let name = format!("quota-error-{kind}");
         let r = QuotaResult {
             five_hour: None,
@@ -131,7 +186,13 @@ fn error_goldens_byte_for_byte() {
 fn fill_missing_golden_byte_for_byte() {
     require_cn_timezone();
     let last = parse_payload(
-        &must_parse(payloads().into_iter().find(|(n, _)| *n == "quota-success_full").unwrap().1),
+        &must_parse(
+            payloads()
+                .into_iter()
+                .find(|(n, _)| *n == "quota-success_full")
+                .unwrap()
+                .1,
+        ),
         at_fracs(),
     );
     let mut fresh = QuotaResult {

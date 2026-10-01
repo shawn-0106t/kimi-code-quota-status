@@ -18,10 +18,10 @@ fn as_f64(v: &Value) -> Option<f64> {
 }
 
 fn home_dir() -> Option<PathBuf> {
-    if let Ok(p) = std::env::var("USERPROFILE") {
-        if !p.is_empty() {
-            return Some(PathBuf::from(p));
-        }
+    if let Ok(p) = std::env::var("USERPROFILE")
+        && !p.is_empty()
+    {
+        return Some(PathBuf::from(p));
     }
     // Fallback: HOMEDRIVE + HOMEPATH
     if let (Ok(d), Ok(p)) = (std::env::var("HOMEDRIVE"), std::env::var("HOMEPATH")) {
@@ -33,10 +33,10 @@ fn home_dir() -> Option<PathBuf> {
 /// <kimi_home> 解析提为 pub：凭证/缓存/配置三处路径共用（SPEC §5.2/§5.3/§8）。
 /// = %USERPROFILE%/.kimi-code，env KIMI_CODE_HOME 非空时整体覆盖。
 pub fn kimi_home() -> Option<PathBuf> {
-    if let Ok(p) = std::env::var("KIMI_CODE_HOME") {
-        if !p.is_empty() {
-            return Some(PathBuf::from(p));
-        }
+    if let Ok(p) = std::env::var("KIMI_CODE_HOME")
+        && !p.is_empty()
+    {
+        return Some(PathBuf::from(p));
     }
     home_dir().map(|h| h.join(".kimi-code"))
 }
@@ -46,15 +46,14 @@ pub fn load_token() -> Option<String> {
 
     // 1) OAuth access token（来自凭证存储；过期视为无效继续兜底）
     let cred = kimi.join("credentials").join("kimi-code.json");
-    if let Ok(text) = fs::read_to_string(&cred) {
-        if let Ok(v) = serde_json::from_str::<Value>(&text) {
-            if let Some(at) = v.get("access_token").and_then(|x| x.as_str()) {
-                let exp = v.get("expires_at").and_then(as_f64).unwrap_or(0.0);
-                let now = chrono::Utc::now().timestamp() as f64;
-                if exp > now + 30.0 {
-                    return Some(at.to_string());
-                }
-            }
+    if let Ok(text) = fs::read_to_string(&cred)
+        && let Ok(v) = serde_json::from_str::<Value>(&text)
+        && let Some(at) = v.get("access_token").and_then(|x| x.as_str())
+    {
+        let exp = v.get("expires_at").and_then(as_f64).unwrap_or(0.0);
+        let now = chrono::Utc::now().timestamp() as f64;
+        if exp > now + 30.0 {
+            return Some(at.to_string());
         }
     }
 
@@ -157,13 +156,20 @@ mod tests {
     fn config_toml_section_settlement() {
         let first_match_wins = "[providers.kimi]\nbase_url = \"https://api.kimi.com/coding/v1\"\napi_key = \"key-3\"\n\
             [providers.other]\nbase_url = \"https://api.kimi.com/coding/v1\"\napi_key = \"later\"\n";
-        assert_eq!(parse_config_provider(first_match_wins), Some("key-3".to_string()));
+        assert_eq!(
+            parse_config_provider(first_match_wins),
+            Some("key-3".to_string())
+        );
 
         let skips_unrelated = "[providers.other]\nbase_url = \"https://example.com/v1\"\napi_key = \"ignored\"\n\
             [providers.kimi]\nbase_url = \"https://api.kimi.com/coding/v1\"\napi_key = \"key-4\"\n";
-        assert_eq!(parse_config_provider(skips_unrelated), Some("key-4".to_string()));
+        assert_eq!(
+            parse_config_provider(skips_unrelated),
+            Some("key-4".to_string())
+        );
 
-        let empty_key = "[providers.kimi]\nbase_url = \"https://api.kimi.com/coding/v1\"\napi_key = \"\"\n";
+        let empty_key =
+            "[providers.kimi]\nbase_url = \"https://api.kimi.com/coding/v1\"\napi_key = \"\"\n";
         assert_eq!(parse_config_provider(empty_key), None);
 
         assert_eq!(parse_config_provider("not toml at all"), None);

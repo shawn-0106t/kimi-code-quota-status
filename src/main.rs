@@ -40,10 +40,10 @@ fn main() {
                 );
             }
             let result = quota::fetch(cfg.base_url.as_deref(), cfg.http_timeout_seconds);
-            if result.error.is_none() {
-                if let Some(kimi) = credentials::kimi_home() {
-                    let _ = cache::write_cache_atomic_at(&cache::cache_path(&kimi), &result);
-                }
+            if result.error.is_none()
+                && let Some(kimi) = credentials::kimi_home()
+            {
+                let _ = cache::write_cache_atomic_at(&cache::cache_path(&kimi), &result);
             }
         }
         // 自检模式（SPEC §4.3）：完整取数一次，pretty JSON（2 空格缩进
@@ -61,14 +61,9 @@ fn main() {
 
             // 步骤 2–3：缓存判定（age >= TTL -> 回拨 mtime + 派生 detached --refresh）
             let cached = credentials::kimi_home().and_then(|kimi| {
-                cache::refresh_if_stale(
-                    &kimi,
-                    cfg.ttl_seconds,
-                    cfg.retry_seconds,
-                    || {
-                        let _ = console::spawn_detached_refresh();
-                    },
-                )
+                cache::refresh_if_stale(&kimi, cfg.ttl_seconds, cfg.retry_seconds, || {
+                    let _ = console::spawn_detached_refresh();
+                })
             });
 
             // 步骤 4：thinking 段（开关关闭时跳过 config.toml 读取，省 IO）

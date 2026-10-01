@@ -96,18 +96,37 @@ pub fn parse(text: &str) -> Config {
     }
 
     // [render.quota] 五键
-    if let Some(q) = val.get("render").and_then(|r| r.get("quota")).and_then(|q| q.as_table()) {
-        cfg.quota.five_hour = q.get("five_hour").and_then(as_bool).unwrap_or(cfg.quota.five_hour);
+    if let Some(q) = val
+        .get("render")
+        .and_then(|r| r.get("quota"))
+        .and_then(|q| q.as_table())
+    {
+        cfg.quota.five_hour = q
+            .get("five_hour")
+            .and_then(as_bool)
+            .unwrap_or(cfg.quota.five_hour);
         cfg.quota.week = q.get("week").and_then(as_bool).unwrap_or(cfg.quota.week);
         cfg.quota.month = q.get("month").and_then(as_bool).unwrap_or(cfg.quota.month);
-        cfg.quota.reset_time = q.get("reset_time").and_then(as_bool).unwrap_or(cfg.quota.reset_time);
-        cfg.quota.booster = q.get("booster").and_then(as_bool).unwrap_or(cfg.quota.booster);
+        cfg.quota.reset_time = q
+            .get("reset_time")
+            .and_then(as_bool)
+            .unwrap_or(cfg.quota.reset_time);
+        cfg.quota.booster = q
+            .get("booster")
+            .and_then(as_bool)
+            .unwrap_or(cfg.quota.booster);
     }
 
     // [thresholds]
     if let Some(t) = val.get("thresholds").and_then(|t| t.as_table()) {
-        cfg.green_below = t.get("green_below").and_then(as_f64).unwrap_or(cfg.green_below);
-        cfg.yellow_below = t.get("yellow_below").and_then(as_f64).unwrap_or(cfg.yellow_below);
+        cfg.green_below = t
+            .get("green_below")
+            .and_then(as_f64)
+            .unwrap_or(cfg.green_below);
+        cfg.yellow_below = t
+            .get("yellow_below")
+            .and_then(as_f64)
+            .unwrap_or(cfg.yellow_below);
     }
 
     // [cache] ttl/retry：防御性钳位避免病态配置引发刷新风暴或 panic
@@ -123,10 +142,10 @@ pub fn parse(text: &str) -> Config {
 
     // [network]
     if let Some(n) = val.get("network").and_then(|n| n.as_table()) {
-        if let Some(s) = n.get("base_url").and_then(|b| b.as_str()) {
-            if !s.trim().is_empty() {
-                cfg.base_url = Some(s.trim().to_string());
-            }
+        if let Some(s) = n.get("base_url").and_then(|b| b.as_str())
+            && !s.trim().is_empty()
+        {
+            cfg.base_url = Some(s.trim().to_string());
         }
         if let Some(v) = n.get("http_timeout_seconds").and_then(as_u64) {
             cfg.http_timeout_seconds = v.max(1);
@@ -227,7 +246,10 @@ http_timeout_seconds = 5
         assert_eq!(cfg.yellow_below, 90.0);
         assert_eq!(cfg.ttl_seconds, 120);
         assert_eq!(cfg.retry_seconds, 45);
-        assert_eq!(cfg.base_url.as_deref(), Some("https://api.kimi.ai/coding/v1"));
+        assert_eq!(
+            cfg.base_url.as_deref(),
+            Some("https://api.kimi.ai/coding/v1")
+        );
         assert_eq!(cfg.http_timeout_seconds, 5);
     }
 

@@ -6,7 +6,7 @@
 // MOVEFILE_REPLACE_EXISTING，语义同 os.replace）。
 
 use crate::quota::QuotaResult;
-use filetime::{set_file_mtime, FileTime};
+use filetime::{FileTime, set_file_mtime};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -31,13 +31,12 @@ pub fn read_cache_at(path: &Path) -> Option<QuotaResult> {
 /// refresh 交错写同一 tmp 的竞态窗口）-> rename 替换。
 /// rename 失败重试一次（防病毒扫描等瞬时占用）；仍失败保留旧缓存。
 pub fn write_cache_atomic_at(path: &Path, result: &QuotaResult) -> io::Result<()> {
-    let dir = path.parent().ok_or_else(|| {
-        io::Error::other("cache path has no parent directory")
-    })?;
+    let dir = path
+        .parent()
+        .ok_or_else(|| io::Error::other("cache path has no parent directory"))?;
     fs::create_dir_all(dir)?;
     let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
-    let text = serde_json::to_string_pretty(result)
-        .map_err(|e| io::Error::other(e.to_string()))?;
+    let text = serde_json::to_string_pretty(result).map_err(|e| io::Error::other(e.to_string()))?;
     fs::write(&tmp, text)?;
     match fs::rename(&tmp, path) {
         Ok(()) => Ok(()),
@@ -50,11 +49,17 @@ pub fn write_cache_atomic_at(path: &Path, result: &QuotaResult) -> io::Result<()
 /// older_than 的文件——在途 refresh 的 tmp 存活期 <1s，不会被误删。
 pub fn cleanup_stale_tmps_at(path: &Path, older_than: Duration) {
     let Some(dir) = path.parent() else { return };
-    let Some(base) = path.file_name().and_then(|n| n.to_str()) else { return };
+    let Some(base) = path.file_name().and_then(|n| n.to_str()) else {
+        return;
+    };
     let prefix = format!("{base}.");
-    let Ok(entries) = fs::read_dir(dir) else { return };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
-        let Ok(name) = entry.file_name().into_string() else { continue };
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
+        };
         if !name.starts_with(&prefix) || !name.ends_with(".tmp") {
             continue;
         }
@@ -82,9 +87,7 @@ pub fn cache_age(path: &Path) -> Option<Duration> {
 fn rollback_target(now: SystemTime, ttl_secs: u64, retry_secs: u64) -> SystemTime {
     match now.checked_sub(Duration::from_secs(ttl_secs.saturating_sub(retry_secs))) {
         Some(t) if retry_secs < ttl_secs => t,
-        _ => now
-            .checked_sub(Duration::from_secs(1))
-            .unwrap_or(now),
+        _ => now.checked_sub(Duration::from_secs(1)).unwrap_or(now),
     }
 }
 
@@ -103,7 +106,11 @@ fn ensure_anchor_at(path: &Path) -> io::Result<()> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
-    match fs::OpenOptions::new().write(true).create_new(true).open(path) {
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+    {
         Ok(_) => Ok(()),
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Ok(()),
         Err(e) => Err(e),
@@ -130,10 +137,10 @@ pub fn refresh_if_stale<F: FnOnce()>(
     // maybe_refresh 同款）：age < TTL 即不派生——空锚定、损坏缓存、refresh
     // 持续失败（无 token / 404）时回拨后的 mtime 同样压住风暴，retry 秒后
     // 自然重试；若把"可解析"相与进来，上述场景每次渲染都会派生进程
-    if let Some(a) = age {
-        if a < Duration::from_secs(ttl_secs) {
-            return cached;
-        }
+    if let Some(a) = age
+        && a < Duration::from_secs(ttl_secs)
+    {
+        return cached;
     }
     // 过期或缺失：先锚定（仅缺失时创建），再回拨，回拨成功才派生
     if ensure_anchor_at(&path).is_err() {
@@ -149,7 +156,7 @@ pub fn refresh_if_stale<F: FnOnce()>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::quota::{ExtraInfo, ExtraState, QuotaSegment, QuotaResult};
+    use crate::quota::{ExtraInfo, ExtraState, QuotaResult, QuotaSegment};
     use chrono::{Local, TimeZone, Timelike};
 
     fn test_result() -> QuotaResult {
@@ -181,8 +188,8 @@ mod tests {
 
     /// 每个测试独享临时目录（env 全局可变，不通过 KIMI_CODE_HOME 隔离）。
     fn temp_kimi(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("quota-status-test-{}-{}", tag, std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("quota-status-test-{}-{}", tag, std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -192,9 +199,7 @@ mod tests {
     #[test]
     fn rollback_target_is_now_minus_ttl_plus_retry() {
         let now = SystemTime::now();
-        let want = now
-            .checked_sub(Duration::from_secs(30))
-            .unwrap();
+        let want = now.checked_sub(Duration::from_secs(30)).unwrap();
         let got = rollback_target(now, 60, 30);
         assert!(got.duration_since(want).unwrap_or_default() < Duration::from_millis(5));
         assert!(want.duration_since(got).unwrap_or_default() < Duration::from_millis(5));
@@ -248,7 +253,7 @@ mod tests {
         assert!(got.is_none());
         assert_eq!(spawns, 1);
         let age = cache_age(&path).unwrap().as_secs();
-        assert!(age >= 29 && age <= 31, "age after rollback = {age}");
+        assert!((29..=31).contains(&age), "age after rollback = {age}");
         let got = refresh_if_stale(&kimi, 60, 30, || spawns += 1);
         assert!(got.is_none());
         assert_eq!(spawns, 1, "回拨后 30s 内连续渲染只派生一次（§4.4 防风暴）");
@@ -292,11 +297,14 @@ mod tests {
         assert_eq!(spawns, 1);
         // 回拨后 mtime age ≈ 30，落在 retry 窗口内
         let age = cache_age(&path).unwrap().as_secs();
-        assert!(age >= 29 && age <= 31, "age after rollback = {age}");
+        assert!((29..=31).contains(&age), "age after rollback = {age}");
 
         // age < TTL -> 新鲜，不派生
-        set_file_mtime(&path, FileTime::from_system_time(SystemTime::now() - Duration::from_secs(59)))
-            .unwrap();
+        set_file_mtime(
+            &path,
+            FileTime::from_system_time(SystemTime::now() - Duration::from_secs(59)),
+        )
+        .unwrap();
         let mut spawns = 0;
         let got = refresh_if_stale(&kimi, 60, 30, || spawns += 1);
         assert!(got.is_some());

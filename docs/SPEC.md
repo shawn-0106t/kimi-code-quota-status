@@ -1,8 +1,8 @@
 # quota-status 契约文档（SPEC）
 
 - 项目：quota-status —— Rust 实现的 Kimi Code CLI statusline 额度显示器（单二进制 `quota-status.exe`）
-- 版本：v1.3.1（2026-10-01；golden 测试数据内化本仓库 `testdata/golden/`，CI 自足，§10.2 同步）
-- 版本历史：v1.3（2026-10-01；第三轮独立 code review 后修订：§4.1 新鲜判定钉死为纯 mtime 语义、§5.1 错误归类按 send/body 阶段细分、§9 缓存损坏行同步表述）；v1.2（2026-10-01；P0–P5 实现落定后修订）；v1.1（2026-10-01；按第二轮复核 REVIEW.md 的 8 项发现修订 F1–F8）；v1.0
+- 版本：v1.3.2（2026-10-01；§11 补录 CI/Release 工程化设施与 CHANGELOG 约定）
+- 版本历史：v1.3.1（2026-10-01；golden 测试数据内化本仓库 `testdata/golden/`，CI 自足，§10.2 同步）；v1.3（2026-10-01；第三轮独立 code review 后修订：§4.1 新鲜判定钉死为纯 mtime 语义、§5.1 错误归类按 send/body 阶段细分、§9 缓存损坏行同步表述）；v1.2（2026-10-01；P0–P5 实现落定后修订）；v1.1（2026-10-01；按第二轮复核 REVIEW.md 的 8 项发现修订 F1–F8）；v1.0
 - 本文档与已定决策清单冲突时，以决策清单为准（本文已按决策清单如实收录；两处事实勘误见 §2.3）
 - 路径约定：所有 `path:line` 引用相对本仓库根（即本文件所在 `docs/` 目录的上一级）
 
@@ -400,6 +400,7 @@ http_timeout_seconds = 8                      # 默认 8s
 - 渲染路径禁网络、禁重 IO（<10ms 预算）；取数路径 HTTP 超时 8s。
 - stdout 强制 UTF-8（errors=replace 语义，§7.6）；detached 子进程 `CREATE_NO_WINDOW | DETACHED_PROCESS` + stdio DEVNULL（§4.4）。
 - 新写代码量预计 300–500 行（渲染 + 字段配置 + 缓存三模块）。
+- CI/Release 工程化（v1.3.2 补录）：`.github/workflows/ci.yml`（push/PR 触发：`cargo fmt --check` + `cargo clippy --all-targets -- -D warnings` + 单元 + golden + release 构建 + 5MB 体积门禁）；`.github/workflows/release.yml`（tag `v*` 触发：tag↔Cargo.toml version 一致性校验 + 全量测试 + 构建 + 自动建 GitHub Release 挂 exe/sha256）。变更历史手写维护于 `CHANGELOG.md`（Keep a Changelog 格式）。
 
 ---
 

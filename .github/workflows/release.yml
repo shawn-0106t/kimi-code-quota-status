@@ -16,6 +16,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify tag matches Cargo.toml version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart('v')
+          $toml = (Select-String -Path Cargo.toml -Pattern '^version = "([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          Write-Output "tag=$tag Cargo.toml=$toml"
+          if ($tag -ne $toml) { throw "tag v$tag != Cargo.toml version $toml" }
+
       - name: Set timezone to UTC+08:00 (golden parity fail-fast requirement)
         run: tzutil /s "China Standard Time"
 

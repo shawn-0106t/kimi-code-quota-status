@@ -1,5 +1,7 @@
 # quota-status
 
+[![CI](https://github.com/shawn-0106t/kimi-code-quota-status/actions/workflows/ci.yml/badge.svg)](https://github.com/shawn-0106t/kimi-code-quota-status/actions/workflows/ci.yml) [![GitHub Release](https://img.shields.io/github/v/release/shawn-0106t/kimi-code-quota-status)](https://github.com/shawn-0106t/kimi-code-quota-status/releases)
+
 Kimi Code CLI 的 statusline 额度显示器：静态单二进制 `quota-status.exe`（Rust，Windows x64），在 footer 第 1 行显示 Kimi For Coding 套餐额度（5h / week / month + reset 时间），字段开关与行内顺序可自定义。
 
 ## 工作原理
@@ -21,7 +23,7 @@ Kimi Code CLI 的 statusline 额度显示器：静态单二进制 `quota-status.
 
 ## 安装
 
-1. 将 `target/release/quota-status.exe` 放到固定位置（示例用 `C:\tools\`，路径可自定）。
+1. 从 [Releases](https://github.com/shawn-0106t/kimi-code-quota-status/releases) 下载 `quota-status.exe`（或 `cargo build --release` 自行构建，产物在 `target/release/`），放到固定位置（示例用 `C:\tools\`，路径可自定）。
 2. 编辑 `~/.kimi-code/tui.toml`，加入：
 
    ```toml
@@ -119,6 +121,10 @@ golden 输入 payload 与期望值复刻自 `repos/kimi-planbar-tui`（只读参
 - `contextTokens`/`maxContextTokens` 不进渲染行（宿主 footer 第 2 行原生显示）。
 - booster 钱包默认不显示；开启 `booster = true` 后以 `boost 余额` 形式（纯 ASCII，cyan）附加在额度组内（仅 Ready 状态）。
 - 国际站（api.kimi.ai）纯 API key 用户的凭证兜底依赖 config.toml provider 匹配，OAuth 凭证不受影响。
+
+## 变更历史
+
+见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可证
 

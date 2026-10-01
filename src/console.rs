@@ -7,9 +7,7 @@ use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
-use windows_sys::Win32::System::Console::{
-    GetConsoleScreenBufferInfo, CONSOLE_SCREEN_BUFFER_INFO,
-};
+use windows_sys::Win32::System::Console::{CONSOLE_SCREEN_BUFFER_INFO, GetConsoleScreenBufferInfo};
 use windows_sys::Win32::System::Threading::{CREATE_NO_WINDOW, DETACHED_PROCESS};
 
 /// 派生 detached --refresh 子进程（SPEC §4.4）：
@@ -43,10 +41,7 @@ pub fn console_width() -> u32 {
 }
 
 fn query_console_width() -> Option<u32> {
-    let conout: Vec<u16> = "CONOUT$"
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect();
+    let conout: Vec<u16> = "CONOUT$".encode_utf16().chain(std::iter::once(0)).collect();
     let handle = unsafe {
         CreateFileW(
             conout.as_ptr(),
