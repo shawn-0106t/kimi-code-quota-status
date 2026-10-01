@@ -1,0 +1,111 @@
+# quota-status
+
+Kimi Code CLI 的 statusline 额度显示器：静态单二进制 `quota-status.exe`（Rust，Windows x64），在 footer 第 1 行显示 Kimi For Coding 套餐额度（5h / week / month + reset 时间），字段开关与行内顺序可自定义。
+
+## 工作原理
+
+```
+宿主(1s 节流, 300ms 硬超时) ──spawn──> quota-status.exe（渲染模式）
+                                        │ 读 stdin 快照 / 缓存 / quota-bar.toml / config.toml[thinking]
+                                        │ 缓存 age ≥ TTL → mtime 回拨 + 派生 detached:
+                                        └──spawn(DETACHED|NO_WINDOW)──> quota-status.exe --refresh
+                                                                                        │ GET {base_url}/usages（8s 超时）
+                                                                                        │ 解析 → 原子写缓存 → 退出
+```
+
+- **渲染模式**（默认）：只读本地缓存拼一行 ANSI 文本，毫秒级退出，禁网络。
+- **取数模式** `--refresh`：凭证链 → GET /usages → 防御解析 → 原子写缓存；任何失败不写缓存（LKG 保留），30s fast-retry。
+- **自检模式** `--test-fetch`：完整取数一次，pretty JSON 打印到 stdout，不写缓存。
+- 宿主是事件驱动的：空闲会话不调用 command，"1 分钟刷新"在活跃会话成立；缓存 TTL 默认 60s。
+- 凭证只读不写：token 新鲜度依赖运行中的 CLI，本工具绝不自行刷新 OAuth token。
+
+## 安装
+
+1. 将 `target/release/quota-status.exe` 放到固定位置（示例用 `C:\tools\`，路径可自定）。
+2. 编辑 `~/.kimi-code/tui.toml`，加入：
+
+   ```toml
+   [status_line]
+   command = "C:\\tools\\quota-status.exe"
+   ```
+
+   **注意**：TOML 基本字符串中 Windows 路径的反斜杠必须写成 `\\`。
+3. 在 Kimi Code TUI 内执行 `/reload-tui`（或重启 CLI）生效。
+4. 自检：`C:\tools\quota-status.exe --test-fetch` 输出 `"error": null` 即取数链路正常（`"error": "no-token"` 表示当前无可用凭证——见下文故障排查）。
+
+## 配置 `~/.kimi-code/quota-bar.toml`（可选）
+
+无此文件时全部取以下默认值；非法键落回默认，渲染绝不因配置失败，未知字段忽略。路径随 `KIMI_CODE_HOME` 联动。
+
+```toml
+[render]
+# 行内字段顺序（可删减、可重排；未列出的字段不显示）
+order = ["permission_mode", "model", "thinking", "quota", "git_branch"]
+
+[render.quota]
+five_hour  = true
+week       = true
+month      = true
+reset_time = true   # false = 永久丢 reset 时间后缀
+booster    = false  # 默认不显示 booster 钱包余额（数据仍解析入缓存）
+
+[thresholds]
+# 百分比颜色阈值：percent < green_below → 绿；< yellow_below → 黄；否则红
+green_below  = 60
+yellow_below = 85
+
+[cache]
+ttl_seconds   = 60   # 缓存有效期
+retry_seconds = 30   # 刷新触发后的 mtime 回拨窗口 = fast-retry 间隔
+
+[network]
+base_url = "https://api.kimi.com/coding/v1"  # 国际站改 https://api.kimi.ai/coding/v1
+http_timeout_seconds = 8
+```
+
+环境变量优先级：`KIMI_CODE_BASE_URL` > `[network] base_url` > 内置默认。
+
+## 故障排查（先读这里）
+
+**① 额度行整体消失**——按顺序检查：
+
+1. `tui.toml` 里 `[status_line]` 段和 `command` 值是否还在？Kimi Code 的偏好保存（如 `/theme`）会**整文件重写** tui.toml：当前版本对 `command`/`items` 的值 round-trip 保真，丢失的只是段内注释与未知键；但**旧版本 CLI**（如 0.31.1 时代）可能整段静默丢失。
+2. 整段丢失的恢复：把上面的 `[status_line]` 配置补回 tui.toml，再执行 `/reload-tui`。
+3. 排查取数：`quota-status.exe --test-fetch`——
+   - `"error": "no-token"`：凭证链无可用 token。若 CLI 处于活跃会话，等其续期后重试；纯 API key 用户需确认 config.toml 的 provider `base_url` 含 `api.kimi.com/coding`（或 `api.kimi.ai/coding`）且 `api_key` 非空。
+   - `"error": "HttpRequestException"`：网络不通或非 managed OAuth 账号（404，该账号类型无 usages 端点）。
+   - `"error": "TaskCanceledException"`：超时（默认 8s）。
+4. 额度组不显示但其余字段正常：`--test-fetch` 看缓存数据；首跑/缓存缺失时额度组会先省略，成功回填后 ≤1s 内出现。
+
+**其他**：渲染被宿主 300ms 杀进程树时会沿用 last-good 输出；若怀疑防病毒拖慢首次启动，可将 exe 目录加入排除项。
+
+## 构建与测试
+
+```bash
+cargo build --release          # 产物 target/release/quota-status.exe（静态 CRT，无 runtime 依赖）
+cargo test                     # 40 单元测试
+cargo test --test golden       # golden parity（33 个 golden 逐字节对齐）
+```
+
+golden 输入 payload 与期望值复刻自 `repos/kimi-planbar-tui`（只读参考仓库）；month 新 case 在本仓库 `testdata/golden/`。固定时钟 `atZero`/`atFracs` 序列化结果按本机时区 `+08:00` 断言。
+
+## 验收记录（2026-10-01）
+
+| 项 | 结果 |
+|---|---|
+| 静态单 exe | dumpbin /dependents 仅系统 DLL（kernel32/bcrypt/advapi32/ntdll/ws2_32），无 vcruntime |
+| 体积 | 1,787,904 字节（≈1.7MB）——**低于 SPEC §11 预估区间 3–5MB 的下限**；预算本意为上限约束（不超 5MB），实际显著优于预估，未做任何填充处理 |
+| 端到端渲染 | 100 次均值 33.79ms/次（PowerShell CreateProcess，含进程启动）< 50ms |
+| 热路径（进程内） | 渲染均值 ≈ 纯进程启动基线（35.7ms），进程内工作仅数 ms < 10ms |
+| golden parity | 30 既有 case + 3 month 新 case 逐字节一致（CRLF 归一化后） |
+| 断网 LKG | 不可达 base_url 下缓存内容不变、无残留进程（30s fast-retry + 60s TTL 内自愈，≤90s） |
+| 非 managed OAuth | `error:"no-token"`/404 均只省略额度组，其余字段正常 |
+
+真机 footer 显示与"活跃会话 1 分钟自动更新"需在 Kimi Code CLI 会话内观察（`/reload-tui` 后保持会话活跃，1 分钟内缓存 mtime/`fetchedAt` 更新即生效）；本记录执行时 OAuth token 已过期且 CLI 未续期，该两条由机制验收（detached 回填、TTL/回拨）覆盖，待用户会话中最终确认。
+
+## 已知限制
+
+- 仅 Windows x64（`x86_64-pc-windows-msvc` + crt-static），不做跨平台。
+- `contextTokens`/`maxContextTokens` 不进渲染行（宿主 footer 第 2 行原生显示）。
+- booster 钱包默认不显示；开启 `booster = true` 后以 `boost 余额` 形式（纯 ASCII，cyan）附加在额度组内（仅 Ready 状态）。
+- 国际站（api.kimi.ai）纯 API key 用户的凭证兜底依赖 config.toml provider 匹配，OAuth 凭证不受影响。

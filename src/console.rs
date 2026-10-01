@@ -1,0 +1,94 @@
+// Windows 进程/控制台辅助：detached 刷新子进程派生（SPEC §4.4）+
+// CONOUT$ 终端宽度查询（SPEC §7.5）。
+
+use std::os::windows::process::CommandExt;
+use std::process::{Command, Stdio};
+use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+use windows_sys::Win32::Storage::FileSystem::{
+    CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+};
+use windows_sys::Win32::System::Console::{
+    GetConsoleScreenBufferInfo, CONSOLE_SCREEN_BUFFER_INFO,
+};
+use windows_sys::Win32::System::Threading::{CREATE_NO_WINDOW, DETACHED_PROCESS};
+
+/// 派生 detached --refresh 子进程（SPEC §4.4）：
+/// `Command::new(<自身绝对路径>).arg("--refresh")` + CREATE_NO_WINDOW |
+/// DETACHED_PROCESS + stdio 三路 DEVNULL；spawn 后立即返回，父进程
+/// 不等待、不读取其任何输出。远早于宿主 300ms 超时退出，宿主的
+/// `taskkill /T` 不波及 detached 子进程。
+pub fn spawn_detached_refresh() -> std::io::Result<()> {
+    let exe = std::env::current_exe()?;
+    Command::new(exe)
+        .arg("--refresh")
+        .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
+}
+
+/// 宽度归一（SPEC §7.5）：查询失败或异常值（0）按 120 兜底。
+pub fn normalize_width(raw: Option<u32>) -> u32 {
+    raw.filter(|w| *w > 0).unwrap_or(120)
+}
+
+/// 终端宽度：stdout 虽为 pipe 但进程仍附着宿主 console —— 用
+/// CreateFileW("CONOUT$") + GetConsoleScreenBufferInfo().dwSize.X 查询；
+/// headless/查询失败按 120（经 normalize_width）。
+pub fn console_width() -> u32 {
+    let raw = query_console_width();
+    normalize_width(raw)
+}
+
+fn query_console_width() -> Option<u32> {
+    let conout: Vec<u16> = "CONOUT$"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    let handle = unsafe {
+        CreateFileW(
+            conout.as_ptr(),
+            0, // 查询屏幕缓冲信息不需要访问权
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            std::ptr::null(),
+            OPEN_EXISTING,
+            0,
+            std::ptr::null_mut(),
+        )
+    };
+    if handle == INVALID_HANDLE_VALUE {
+        return None;
+    }
+    let mut info: CONSOLE_SCREEN_BUFFER_INFO = unsafe { std::mem::zeroed() };
+    let ok = unsafe { GetConsoleScreenBufferInfo(handle, &mut info) };
+    unsafe { CloseHandle(handle) };
+    if ok != 0 {
+        Some(info.dwSize.X as u32)
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 宽度不可得分支（PLAN P3 单测清单）：None/0 -> 120 兜底，正常值透传。
+    #[test]
+    fn width_normalize_fallback() {
+        assert_eq!(normalize_width(None), 120);
+        assert_eq!(normalize_width(Some(0)), 120);
+        assert_eq!(normalize_width(Some(80)), 80);
+        assert_eq!(normalize_width(Some(u32::MAX)), u32::MAX);
+    }
+
+    /// 真实查询烟测：测试进程有 console 时返回正宽度，headless 落 120。
+    /// 不假定最小宽度（80 列 console 同样合法）。
+    #[test]
+    fn console_width_sane() {
+        let w = console_width();
+        assert!(w > 0, "width = {w}");
+    }
+}

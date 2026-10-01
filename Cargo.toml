@@ -1,0 +1,31 @@
+[package]
+name = "quota-status"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+description = "Kimi Code CLI statusline quota display: cached render + detached refresh (5h/week/month)"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# serde feature: DateTime<Local> 直接序列化为 RFC3339（AutoSi 小数秒，golden 对齐依赖此行为）
+chrono = { version = "0.4", features = ["serde", "clock"] }
+toml = "0.9"
+# 阻塞式轻量 HTTP client + rustls（打包根证书），SPEC §11 白名单；禁 tokio/async
+ureq = { version = "3", features = ["rustls"] }
+filetime = "0.2"
+windows-sys = { version = "0.60", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_Threading",
+] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

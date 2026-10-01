@@ -1,7 +1,8 @@
 # quota-status 契约文档（SPEC）
 
 - 项目：quota-status —— Rust 实现的 Kimi Code CLI statusline 额度显示器（单二进制 `quota-status.exe`）
-- 版本：v1.1（2026-10-01；v1.0 后按第二轮复核 REVIEW.md 的 8 项发现修订：F1–F8，主对话逐条仲裁后落地）
+- 版本：v1.2（2026-10-01；P0–P5 实现落定后修订：§4.2 原子写 tmp 文件名带 PID、§5.2 凭证兜底标记已实现、§6.6 month 段 NaN 防御、§7.1 booster 显示格式、§10.2 month 新 case 数量与时区说明、§11 体积预算表述）
+- 版本历史：v1.1（2026-10-01；按第二轮复核 REVIEW.md 的 8 项发现修订 F1–F8）；v1.0
 - 本文档与已定决策清单冲突时，以决策清单为准（本文已按决策清单如实收录；两处事实勘误见 §2.3）
 - 路径约定：所有 `path:line` 引用相对本仓库根（即本文件所在 `docs/` 目录的上一级）
 
@@ -17,7 +18,7 @@ Kimi Code CLI 的 footer 支持用户自定义 statusline command（`tui.toml [s
 
 1. **额度数据 1 分钟刷新** —— 缓存 TTL 60s + detached 后台取数；
 2. **statusline 字段可自定义** —— `~/.kimi-code/quota-bar.toml` 控制字段开关与行内顺序；
-3. **轻量、性能优秀** —— 单 exe、无 runtime 依赖、渲染路径禁网络禁重 IO（预算 <10ms）、目标体积 3–5MB。
+3. **轻量、性能优秀** —— 单 exe、无 runtime 依赖、渲染路径禁网络禁重 IO（预算 <10ms）、目标体积 ≤5MB（v1.2：原"3–5MB"为预估区间，实测 ≈1.7MB）。
 
 ### 1.2 Non-goals（明确不做）
 
@@ -150,7 +151,7 @@ command = "C:\\tools\\quota-status.exe"
 1. 凭证链取 token（§5.2）；无 token → 直接退出（不写缓存）。
 2. `GET {base_url}/usages`（HTTP 超时 8s）。
 3. 防御式解析（§6）。
-4. 成功：`mkdir -p` 缓存目录，写 `quota-status.json.tmp` 后 `fs::rename` 原子替换（Windows 下 std rename 带 `MOVEFILE_REPLACE_EXISTING`，等价 `os.replace`，语义同 quota-status.py:127-131）。写入的是**解析后的结构化 JSON**，不是渲染串。
+4. 成功：`mkdir -p` 缓存目录，写 `quota-status.json.<pid>.tmp` 后 `fs::rename` 原子替换（v1.2：tmp 带 PID 后缀，消除并发 refresh 交错写同一 tmp 的竞态窗口；Windows 下 std rename 带 `MOVEFILE_REPLACE_EXISTING`，等价 `os.replace`，语义同 quota-status.py:127-131）。写入的是**解析后的结构化 JSON**，不是渲染串。
 5. 失败（网络/非 2xx/解析失败）：**不写缓存**——旧数据与回拨后的 mtime 原样保留，30s 后渲染模式自然再触发（fast-retry，见 §5.3）。
 6. `--refresh` 总是 exit 0（无消费者读取其退出码；失败语义由"缓存未更新"表达）。
 
@@ -184,7 +185,7 @@ command = "C:\\tools\\quota-status.exe"
 `<kimi_home>` = `%USERPROFILE%/.kimi-code`，可被 env `KIMI_CODE_HOME` 覆盖（credentials.rs:35-42）：
 
 1. **`<kimi_home>/credentials/kimi-code.json`** 的 `access_token`（string）；校验 `expires_at`（Unix 秒，number-or-string）> now + 30s，过期视为无效继续下一步（credentials.rs:49-60）。token 刷新依赖运行中的 CLI，**本工具绝不自行刷新**。
-2. **兜底 `<kimi_home>/config.toml`**：逐行解析（非完整 TOML parser），找节名以 `providers.` 开头、`base_url` 包含 `api.kimi.com/coding`、`api_key` 非空的 provider，返回其 `api_key`；遇新节先结算上一节（credentials.rs:62-113）。匹配串沿袭参考实现 credentials.rs:107、仅含 `api.kimi.com/coding`——**国际站（api.kimi.ai/coding）纯 API key 用户不走此兜底**（仅 OAuth 凭证可用，§5.1）；实现时可将匹配串扩展为同时含 `api.kimi.ai/coding`（超出参考实现的增强，需自测不破坏既有 golden）。
+2. **兜底 `<kimi_home>/config.toml`**：逐行解析（非完整 TOML parser），找节名以 `providers.` 开头、`base_url` 包含 `api.kimi.com/coding`、`api_key` 非空的 provider，返回其 `api_key`；遇新节先结算上一节（credentials.rs:62-113）。v1.2 落定：匹配串已扩展为同时含 `api.kimi.ai/coding`（国际站纯 API key 用户同样走此兜底；原参考实现仅含 `api.kimi.com/coding`）；解析为手写键值抽取而非 regex（regex 不在 §11 依赖白名单），语义由移植单测钉死。
 3. 两者皆无 → 无 token：`--refresh` 静默退出，`--test-fetch` 输出 `error = "no-token"`，渲染模式额度组整体省略。
 
 ### 5.3 缓存
@@ -205,7 +206,7 @@ command = "C:\\tools\\quota-status.exe"
 ```
 
 - TTL 默认 **60s**（`quota-bar.toml [cache] ttl_seconds` 可覆盖；决策清单定 60s，Python 原型的 300s 不采用）。
-- 原子写：同目录 `.tmp` + rename（§4.2 步骤 4）。
+- 原子写：同目录带 PID 后缀的 `.tmp` + rename（§4.2 步骤 4）。
 - 过期判定与 mtime 回拨：见 §4.4；回拨写 mtime 用 `filetime` crate（Windows `SetFileTime`）。
 - 首跑/缓存缺失：渲染模式创建空缓存文件以锚定 mtime（quota-status.py:137-139 同款），再回拨+派生；额度组暂不显示。
 - **任何失败保留 LKG**：刷新失败不写缓存（§4.2 步骤 5），渲染永远不清空已有额度数据——语义等价于 kimi-planbar-tui 的 `fill_missing_from`（quota.rs:63-73、polling.rs:22-27、SPEC §16.5 步骤 2）。
@@ -221,7 +222,7 @@ command = "C:\\tools\\quota-status.exe"
 3. **NaN/inf/敌意整数归零**：敌意字符串（`"1e999"`、`"NaN"`）产生的非有限 percent 归 0，序列化永不输出非有限 double（quota.rs:188-193）；`i64` 敌意值（如字符串 `"-9223372036854775808"` 即 `i64::MIN`）必须可解析——该用例是 monthly `priceInCents`，经 `parse_cents` 直存、不经换算（quota.rs:359-373 单测）；balance 换算处的 `saturating_add` 防的是 amountLeft 近 `i64::MAX` 的**正溢出**（quota.rs:229-230 注释逐字 "a pathological amountLeft near i64::MAX must not overflow"；golden `quota-amount_huge`）。
 4. **5h 段优先 window 匹配**：在 `root.limits[]` 中优先取 `window.duration == 300` 且 `window.timeUnit == "TIME_UNIT_MINUTE"` 的元素，找不到回落 `limits[0]`；段的 `detail` 进 `parse_segment`（quota-status.py:78-82）。注意被抽取的 quota.rs:115-123 目前只取 `limits[0]`，实现时以本条 window 匹配语义为准（决策清单）。
 5. **周段取顶层 `root.usage`**（对象才解析；quota.rs:124-129）。
-6. **月段取 `root.totalQuota`，有 limit 才产生段**：`totalQuota.limit` 缺失或为 0 时不渲染 month 段（quota-status.py:93-97）。此段为本工具新增，quota.rs 与既有 golden 无 month 字段。
+6. **月段取 `root.totalQuota`，有 limit 才产生段**：`totalQuota.limit` 缺失、为 0 或非有限值（NaN——`NaN != 0.0` 恒真，须显式排除，v1.2 补录）时不渲染 month 段（quota-status.py:93-97）。此段为本工具新增，quota.rs 与既有 golden 无 month 字段。
 7. **resetTime 宽松解析**：RFC3339 优先；失败后按宽松阶梯（quota.rs:158-174）——带偏移变体 4 个（空格或 `T` 分隔 + `%:z`/`%z` 偏移），其中**仅 `%H:%M:%S%.f %:z`（空格分隔+偏移）支持小数秒**；naive 变体 2 个（`%Y-%m-%d %H:%M:%S`、`%Y-%m-%dT%H:%M:%S`）不支持小数秒；无 offset 按本地时区（golden `reset_time.txt`、`quota-reset_fraction`）。
 8. **boosterWallet 防御**：非对象或缺失 → `NotActivated`；`isEnabled === false` → `NotActivated`——**此时 `amountLeft` 是"月度上限-已用"的估算值而非真实余额，不可当真实余额**（quota.rs:204-220；golden `quota-disabled_wallet`）。仅严格布尔 `false` 触发上述防御；`isEnabled` 为非布尔值（字符串 `"false"`、数字 0 等）不触发防御，按启用路径继续解析 balance（quota.rs:218 `as_bool` 仅识别严格布尔；字符串 "false" 用例 quota_test.go:137-141，数字 0 用例 golden `quota-isenabled_zero` 内联 payload（quota_test.go:255）；两 golden 均 state=Ready）。
 9. **余额单位换算**：`balance.amountLeft` 单位为 1e-8 元，`cents = (raw + 500000) / 1_000_000`（四舍五入；quota.rs:222-233；golden `quota-amount_frac_number`、`quota-amount_negative_round*`）。
@@ -250,7 +251,7 @@ thinking 阶梯（不在 stdin 快照里；语义同 quota-status.py:101-119）�
 3. 缺失则回退：在 `[models.*]` 中找 `display_name` 或 `model` 等于当前 stdin `model` 的条目，取 `overrides.default_effort`，再退 `default_effort`；
 4. 都取不到 → 该段省略。字段开关关闭时跳过整段（也跳过 config.toml 读取，省 IO）。
 
-`contextTokens`/`maxContextTokens` 不进本行（§3.4）。booster 钱包默认不显示（解析仍入库，供配置扩展）。
+`contextTokens`/`maxContextTokens` 不进本行（§3.4）。booster 钱包默认不显示（解析仍入库，供配置扩展）；v1.2 落定：`[render.quota] booster = true` 且 state=Ready 且 balanceCents 可用时，以 cyan `boost <余额元>`（纯 ASCII 两位小数，避免 ¥ 在非 UTF-8 终端的兼容性问题）附加在额度组内。
 
 ### 7.2 颜色码（basic SGR，宿主 chalk 包装不影响）
 
@@ -368,7 +369,8 @@ http_timeout_seconds = 8                      # 默认 8s
 - 机制复刻 `quota_test.go:206-293`：输入 payload 内联（拷贝自 quota_test.go:240-266）→ 注入解析函数 → 以固定时钟序列化 → 与 `repos/kimi-planbar-tui/go/testdata/golden/quota-*.txt` **逐字节对齐**（比较前做 CRLF 归一化，goldens_test.go:23-25 同款）。
 - 固定时钟沿用 quota_test.go:14-15 的两个常量：`atZero`（1893456000000ms 整）、`atFracs`（+123456789ns）。
 - 序列化格式与 `--test-fetch` 输出共用同一函数（serde pretty、2 空格缩进、camelCase），保证 parity 即覆盖二进制输出格式。
-- `month` 字段以 `skip_serializing_if = "Option::is_none"` 序列化：既有 30 个 golden（无 month 键）保持 byte-identical；month 新 case（如 `quota-month-full`、`quota-month-no-limit`）由本项目 testdata 新增，不回写参考仓库。
+- `month` 字段以 `skip_serializing_if = "Option::is_none"` 序列化：既有 30 个 golden（无 month 键）保持 byte-identical；month 新 case 3 个（`quota-month-full`、`quota-month-no-limit`、`quota-month-zero-limit`）已落在本项目 `testdata/golden/`，不回写参考仓库。
+- golden 断言含 +08:00 时区偏移（固定时钟按本机时区序列化，沿袭参考仓库 Go 测试的 time.Local 语义）：非 +08:00 机器上 parity 测试 fail-fast 并给出明确原因，不作静默跳过。
 - `quota-error-*` 4 个 case 不走网络，直接构造 error 结果比对（quota_test.go:272-275 同款）。
 
 ### 10.3 `--test-fetch` 自检
@@ -379,7 +381,7 @@ http_timeout_seconds = 8                      # 默认 8s
 
 ### 10.4 真机验收标准
 
-1. 产物为单个静态 exe，体积 3–5MB（§11）。
+1. 产物为单个静态 exe，体积 ≤5MB（§11；实测 ≈1.7MB）。
 2. 渲染进程端到端 <50ms（宿主 300ms 上限内留 6 倍余量）；热路径 <10ms。
 3. 配好 tui.toml 并 `/reload-tui` 后，额度行显示于 footer 第 1 行；**活跃会话**（有输入/流式/活动 goal）中额度数据在 **1 分钟内**自动更新（TTL 60s + 事件驱动重渲染，§3.3）；纯空闲会话宿主不调用 command、刷新不触发，恢复活动后数秒内随一次渲染自愈。
 4. 断网/接口失败后，旧额度数据保留显示不清空；网络恢复后 ≤90s 内自愈（30s fast-retry + 60s TTL 内）。
@@ -393,7 +395,7 @@ http_timeout_seconds = 8                      # 默认 8s
 - cargo 单 crate；仅 Windows x64 目标（`x86_64-pc-windows-msvc` + `.cargo/config.toml` 里 `rustflags = ["-C", "target-feature=+crt-static"]` 静态链接 CRT），产物无 runtime 依赖。
 - release profile：`opt-level = "s"`、`lto = true`、`codegen-units = 1`、`strip = true`、`panic = "abort"`。
 - 依赖取向（控制体积）：`serde`/`serde_json`、`chrono`、`toml`（quota-bar.toml 与 config.toml 的 thinking/models 段）、HTTP 用阻塞式轻量 client（首选 `ureq` + rustls + 打包根证书；若换 `reqwest` 必须 blocking + rustls），`filetime`（mtime 回拨）、`windows-sys`（console 宽度、creation flags）。**不引入 tokio/async**——取数是一次性阻塞调用，渲染是派生后即退出。
-- 体积预算：静态 exe **3–5MB**；超预算时优先换 HTTP/TLS 后端。
+- 体积预算：静态 exe **≤5MB**（v1.2：原"3–5MB"为撰写时的预估区间，实现实测 1,788,928 字节 ≈1.7MB，预算按上限约束执行）；超预算时优先换 HTTP/TLS 后端。
 - 渲染路径禁网络、禁重 IO（<10ms 预算）；取数路径 HTTP 超时 8s。
 - stdout 强制 UTF-8（errors=replace 语义，§7.6）；detached 子进程 `CREATE_NO_WINDOW | DETACHED_PROCESS` + stdio DEVNULL（§4.4）。
 - 新写代码量预计 300–500 行（渲染 + 字段配置 + 缓存三模块）。

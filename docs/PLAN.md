@@ -1,7 +1,9 @@
 # quota-status 实现计划（PLAN）
 
-- 版本：v1.1（2026-10-01；同步 SPEC v1.1 修订）
-- 契约依据：`docs/SPEC.md` v1.1（唯一事实来源；本计划一切行为要求以 SPEC 条目为准，冲突时以 SPEC 为准）
+- 版本：v1.2（2026-10-01；同步 SPEC v1.2——P5 体积验收区间改为 ≤5MB）
+- 版本历史：v1.1（2026-10-01；同步 SPEC v1.1 修订）
+- **完成状态：P0–P5 已于 2026-10-01 全部实现并通过阶段验收**（独立 code review 结论"可交付"）。逐项验收数据、体积偏差说明与两条待真机确认项见 README「验收记录」；下文任务清单与验收标准保留撰写时原貌，不作勾选回填。
+- 契约依据：`docs/SPEC.md` v1.2（唯一事实来源；本计划一切行为要求以 SPEC 条目为准，冲突时以 SPEC 为准）
 - 路径约定：相对本仓库根；`<kimi_home>` = `~/.kimi-code`（受 env `KIMI_CODE_HOME` 覆盖，SPEC §5.2）
 - 工程布局决策（SPEC 未规定，本计划定为如下，可调整）：cargo 工程 = 本仓库根，即 `Cargo.toml`、`.cargo/config.toml`、`src/*.rs`、`tests/golden.rs`、`testdata/golden/`（本项目新增 golden 用，绝不回写 `repos/` 下参考仓库）
 - 参考资产路径勘误：golden 矩阵实际位于 `repos/kimi-planbar-tui/go/testdata/golden/`（30 个 `quota-*.txt`，本计划撰写时已 `ls | grep -c` 核实为 30）；`repos/kimi-planbar/go/testdata/golden/` 不存在（SPEC §2.3 勘误 1）
@@ -49,7 +51,7 @@
 
 ### 风险与回退
 
-- **风险：ureq + rustls 静态链接后体积逼近或超出 3–5MB 预算**（SPEC §11：超预算时优先换 HTTP/TLS 后端）。回退：换 rustls 后端feature 组合，或改用更轻 client；仍超则回报决策（SPEC 留了 `reqwest` blocking + rustls 的备选，但体积通常更大）
+- **风险：ureq + rustls 静态链接后体积逼近或超出 ≤5MB 预算**（SPEC §11：超预算时优先换 HTTP/TLS 后端；撰写时预估 3–5MB，实测 1.7MB，风险未发生）。回退：换 rustls 后端feature 组合，或改用更轻 client；仍超则回报决策（SPEC 留了 `reqwest` blocking + rustls 的备选，但体积通常更大）
 - **风险：`panic = "abort"` 改变错误处理语义**（无 unwind）。回退：P1 起所有解析路径坚持防御式 `Result` 传播（SPEC §6 本就要求不 panic），不依赖 catch_unwind
 - **风险：crt-static 与某些依赖（如 windows-sys feature）组合编译失败**。回退：临时去掉 crt-static 定位是否为 CRT 静态链接问题，再针对性调整 feature
 
@@ -219,12 +221,12 @@
 
 ### 目标
 
-产出满足 SPEC §10.4 六条真机验收的交付物：体积 3–5MB 的静态单 exe、性能达标、安装文档（tui.toml 配置 + `/reload-tui` + 已知风险提示）。
+产出满足 SPEC §10.4 六条真机验收的交付物：体积 ≤5MB 的静态单 exe（撰写时预估 3–5MB）、性能达标、安装文档（tui.toml 配置 + `/reload-tui` + 已知风险提示）。
 
 ### 任务清单
 
 - [ ] `cargo build --release` 最终构建，确认静态 CRT、无 runtime 依赖（`dumpbin /dependents target/release/quota-status.exe` 仅系统 dll）
-- [ ] 体积验收：`stat -c %s` 在 3–5MB 区间（3145728–5242880 字节）
+- [ ] 体积验收：`stat -c %s` ≤ 5242880 字节（撰写时预估区间 3145728–5242880 字节；实测 1788928 字节）
 - [ ] 性能验收：热路径 <10ms、端到端（含进程启动）<50ms——预热后循环计时取均值（如 bash 循环 100 次 `time` 或 PowerShell `Measure-Command`）
 - [ ] 编写 `README.md` 安装文档：放置 exe（如 `C:\tools\quota-status.exe`）、`~/.kimi-code/tui.toml` 配置 `[status_line] command`（TOML 反斜杠转义提醒，SPEC §3.1）、`/reload-tui` 生效步骤、`quota-bar.toml` 完整示例与字段说明、`--test-fetch` 自检用法、已知风险（SPEC §12 三条：偏好保存整文件重写 tui.toml 的说明——当前 main 中 command/items 值 round-trip 保真、旧版本可能整段丢失——排查恢复步骤优先置顶）
 - [ ] 真机验收六条逐项执行并留档（SPEC §10.4）：单 exe 体积 / 性能 / footer 显示与活跃会话 1 分钟自动更新 / 断网 LKG 保留且 ≤90s 自愈 / 非 managed OAuth 账号无额度组不报错 / tui.toml 重写场景演练恢复（round-trip 验证；旧版本整段丢失时补回）
@@ -238,7 +240,7 @@
 
 ### 验收标准
 
-1. `stat -c %s target/release/quota-status.exe` 输出在 [3145728, 5242880] 区间
+1. `stat -c %s target/release/quota-status.exe` ≤ 5242880 字节（v1.2：原 [3145728, 5242880] 区间为撰写时预估，实测 1788928 字节 ≈1.7MB，预算按上限约束执行）
 2. 性能：100 次循环渲染计时均值 <50ms/次（含进程启动）；若拆分统计，热路径部分 <10ms（SPEC §10.4 条 2）
 3. 可观察行为：配置 `tui.toml [status_line] command` 并 `/reload-tui` 后，footer 第 1 行显示额度行；**活跃会话**（保持输入/流式或活动 goal）中 ≤1 分钟内缓存文件 mtime/`fetchedAt` 更新（或额度百分比发生变化）即判刷新机制生效；纯空闲会话宿主不调用 command、刷新不触发（事件驱动，SPEC §3.3），恢复活动后数秒内随一次渲染自愈——以「活跃 1 分钟内 mtime 更新」+「空闲→活跃自愈」两个观察点联合判定（SPEC §10.4 条 3）
 4. 可观察行为：断网（或临时把 `base_url` 指向不可达地址）→ 旧额度数据保留显示不清空；恢复网络后 ≤90s 内数据自愈更新（SPEC §10.4 条 4）
