@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      CARGO_TERM_COLOR: always
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set timezone to UTC+08:00 (golden parity fail-fast requirement)
+        run: tzutil /s "China Standard Time"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Full test suite
+        run: cargo test --locked
+
+      - name: Release build (static single exe)
+        run: cargo build --release --locked
+
+      - name: Package artifact + checksum
+        shell: pwsh
+        run: |
+          $exe = "target/release/quota-status.exe"
+          $size = (Get-Item $exe).Length
+          if ($size -gt 5MB) { throw "exe exceeds 5MB budget: $size" }
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  quota-status.exe" | Out-File -Encoding ascii quota-status.exe.sha256
+          Write-Output "quota-status.exe: $size bytes, sha256 $hash"
+
+      - name: Create GitHub Release
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          gh release create $tag target/release/quota-status.exe quota-status.exe.sha256 --title $tag --generate-notes
