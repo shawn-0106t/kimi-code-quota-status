@@ -5,16 +5,16 @@
 // 以固定时钟序列化 -> 与 golden 文件逐字节比对（比较前 CRLF 归一化，同
 // goldens_test.go:23-25）。
 //
-// 既有 30 case 位于 repos/kimi-planbar-tui/go/testdata/golden/（只读参考）；
-// month 新 case 位于本仓库 testdata/golden/（绝不回写参考仓库，SPEC §10.2）。
+// 全部 33 case 已内化到本仓库 testdata/golden/（2026-10-01：30 个既有 case
+// 从参考仓库逐字节复制，CI 自足；month 3 个新 case 原生）。参考仓库仍为
+// 上游事实来源；新增 case 只进本仓库，绝不回写参考仓库（SPEC §10.2）。
 // 序列化与 --test-fetch 输出共用 QuotaResult::to_pretty_json。
 
 use chrono::{DateTime, Local, TimeZone, Timelike};
 use quota_status::quota::{parse_payload, QuotaResult};
 use serde_json::Value;
 
-const REF_GOLDEN_DIR: &str = "repos/kimi-planbar-tui/go/testdata/golden";
-const LOCAL_GOLDEN_DIR: &str = "testdata/golden";
+const GOLDEN_DIR: &str = "testdata/golden";
 
 /// golden 固定时钟（quota_test.go:14-15）：atZero = 1893456000000ms 整、
 /// atFracs = +123456789ns。本机时区 +08:00 下序列化为
@@ -94,14 +94,14 @@ fn payloads() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
-/// 既有 25 个解析 case：逐字节对齐参考仓库 golden（month 键以
+/// 既有 25 个解析 case：逐字节对齐内化 golden（month 键以
 /// skip_serializing_if 保证不出现，保持 byte-identical）。
 #[test]
 fn goldens_byte_for_byte() {
     require_cn_timezone();
     for (name, payload) in payloads() {
         let r = parse_payload(&must_parse(payload), at_fracs());
-        assert_matches(name, &r.to_pretty_json(), REF_GOLDEN_DIR);
+        assert_matches(name, &r.to_pretty_json(), GOLDEN_DIR);
     }
 }
 
@@ -120,7 +120,7 @@ fn error_goldens_byte_for_byte() {
             fetched_at: at_zero(),
             error: Some(kind.to_string()),
         };
-        assert_matches(&name, &r.to_pretty_json(), REF_GOLDEN_DIR);
+        assert_matches(&name, &r.to_pretty_json(), GOLDEN_DIR);
     }
 }
 
@@ -143,7 +143,7 @@ fn fill_missing_golden_byte_for_byte() {
         error: Some("HttpRequestException".to_string()),
     };
     fresh.fill_missing_from(&last);
-    assert_matches("quota-fill-missing", &fresh.to_pretty_json(), REF_GOLDEN_DIR);
+    assert_matches("quota-fill-missing", &fresh.to_pretty_json(), GOLDEN_DIR);
 }
 
 /// month 新 case（本项目 testdata/golden/，SPEC §6.6 / §10.2）：
@@ -167,7 +167,7 @@ fn month_goldens_byte_for_byte() {
     ];
     for (name, payload) in cases {
         let r = parse_payload(&must_parse(payload), at_fracs());
-        assert_matches(name, &r.to_pretty_json(), LOCAL_GOLDEN_DIR);
+        assert_matches(name, &r.to_pretty_json(), GOLDEN_DIR);
     }
 }
 
@@ -176,7 +176,7 @@ fn month_goldens_byte_for_byte() {
 /// 此处钉死归一化真实生效——CRLF 版本文本归一化后须与输出一致。
 #[test]
 fn crlf_normalization_is_load_bearing() {
-    let raw = golden_text(REF_GOLDEN_DIR, "quota-empty");
+    let raw = golden_text(GOLDEN_DIR, "quota-empty");
     let crlf = raw.replace('\n', "\r\n");
     let r = parse_payload(&must_parse("{}"), at_fracs());
     let got = r.to_pretty_json();

@@ -1,0 +1,19 @@
+{
+  "fiveHour": {
+    "percent": 21.0,
+    "resetAt": "2030-01-01T00:00:00+08:00"
+  },
+  "week": {
+    "percent": 18.5,
+    "resetAt": "2030-01-08T00:00:00+08:00"
+  },
+  "extra": {
+    "state": "Ready",
+    "balanceCents": 1235,
+    "monthlyEnabled": true,
+    "monthlyUsedCents": 4567,
+    "monthlyLimitCents": 10000
+  },
+  "fetchedAt": "2030-01-01T08:00:00+08:00",
+  "error": "HttpRequestException"
+}

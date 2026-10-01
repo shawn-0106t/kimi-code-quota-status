@@ -1,0 +1,16 @@
+{
+  "fiveHour": {
+    "percent": 0.0,
+    "resetAt": null
+  },
+  "week": null,
+  "extra": {
+    "state": "NotActivated",
+    "balanceCents": null,
+    "monthlyEnabled": false,
+    "monthlyUsedCents": null,
+    "monthlyLimitCents": null
+  },
+  "fetchedAt": "2030-01-01T08:00:00.123456789+08:00",
+  "error": null
+}

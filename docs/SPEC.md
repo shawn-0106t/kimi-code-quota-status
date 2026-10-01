@@ -1,8 +1,8 @@
 # quota-status 契约文档（SPEC）
 
 - 项目：quota-status —— Rust 实现的 Kimi Code CLI statusline 额度显示器（单二进制 `quota-status.exe`）
-- 版本：v1.3（2026-10-01；第三轮独立 code review 后修订：§4.1 新鲜判定钉死为纯 mtime 语义、§5.1 错误归类按 send/body 阶段细分、§9 缓存损坏行同步表述）
-- 版本历史：v1.2（2026-10-01；P0–P5 实现落定后修订）；v1.1（2026-10-01；按第二轮复核 REVIEW.md 的 8 项发现修订 F1–F8）；v1.0
+- 版本：v1.3.1（2026-10-01；golden 测试数据内化本仓库 `testdata/golden/`，CI 自足，§10.2 同步）
+- 版本历史：v1.3（2026-10-01；第三轮独立 code review 后修订：§4.1 新鲜判定钉死为纯 mtime 语义、§5.1 错误归类按 send/body 阶段细分、§9 缓存损坏行同步表述）；v1.2（2026-10-01；P0–P5 实现落定后修订）；v1.1（2026-10-01；按第二轮复核 REVIEW.md 的 8 项发现修订 F1–F8）；v1.0
 - 本文档与已定决策清单冲突时，以决策清单为准（本文已按决策清单如实收录；两处事实勘误见 §2.3）
 - 路径约定：所有 `path:line` 引用相对本仓库根（即本文件所在 `docs/` 目录的上一级）
 
@@ -367,10 +367,10 @@ http_timeout_seconds = 8                      # 默认 8s
 
 ### 10.2 golden parity（30 case 对齐）
 
-- 机制复刻 `quota_test.go:206-293`：输入 payload 内联（拷贝自 quota_test.go:240-266）→ 注入解析函数 → 以固定时钟序列化 → 与 `repos/kimi-planbar-tui/go/testdata/golden/quota-*.txt` **逐字节对齐**（比较前做 CRLF 归一化，goldens_test.go:23-25 同款）。
+- 机制复刻 `quota_test.go:206-293`：输入 payload 内联（拷贝自 quota_test.go:240-266）→ 注入解析函数 → 以固定时钟序列化 → 与本仓库 `testdata/golden/quota-*.txt` **逐字节对齐**（30 个既有 case 于 2026-10-01 从 `repos/kimi-planbar-tui/go/testdata/golden/` 逐字节复制内化，CI 自足；比较前做 CRLF 归一化，goldens_test.go:23-25 同款）。
 - 固定时钟沿用 quota_test.go:14-15 的两个常量：`atZero`（1893456000000ms 整）、`atFracs`（+123456789ns）。
 - 序列化格式与 `--test-fetch` 输出共用同一函数（serde pretty、2 空格缩进、camelCase），保证 parity 即覆盖二进制输出格式。
-- `month` 字段以 `skip_serializing_if = "Option::is_none"` 序列化：既有 30 个 golden（无 month 键）保持 byte-identical；month 新 case 3 个（`quota-month-full`、`quota-month-no-limit`、`quota-month-zero-limit`）已落在本项目 `testdata/golden/`，不回写参考仓库。
+- `month` 字段以 `skip_serializing_if = "Option::is_none"` 序列化：既有 30 个 golden（无 month 键）保持 byte-identical（2026-10-01 已内化 `testdata/golden/`）；month 新 case 3 个（`quota-month-full`、`quota-month-no-limit`、`quota-month-zero-limit`）原生于本项目 `testdata/golden/`，不回写参考仓库。
 - golden 断言含 +08:00 时区偏移（固定时钟按本机时区序列化，沿袭参考仓库 Go 测试的 time.Local 语义）：非 +08:00 机器上 parity 测试 fail-fast 并给出明确原因，不作静默跳过。
 - `quota-error-*` 4 个 case 不走网络，直接构造 error 结果比对（quota_test.go:272-275 同款）。
 

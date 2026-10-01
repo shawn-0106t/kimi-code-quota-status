@@ -1,0 +1,7 @@
+{
+  "fiveHour": null,
+  "week": null,
+  "extra": null,
+  "fetchedAt": "2030-01-01T08:00:00+08:00",
+  "error": "JsonException"
+}

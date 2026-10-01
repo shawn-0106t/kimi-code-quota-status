@@ -87,7 +87,7 @@ cargo test                     # 45 单元测试
 cargo test --test golden       # golden parity（33 个 golden 逐字节对齐）
 ```
 
-golden 输入 payload 与期望值复刻自 `repos/kimi-planbar-tui`（只读参考仓库）；month 新 case 在本仓库 `testdata/golden/`。固定时钟 `atZero`/`atFracs` 序列化结果按本机时区 `+08:00` 断言。
+golden 输入 payload 与期望值复刻自 `repos/kimi-planbar-tui`（只读参考仓库），33 个 golden 已全部内化本仓库 `testdata/golden/`（30 个既有 + month 3 个原生），测试运行时不依赖 `repos/`。固定时钟 `atZero`/`atFracs` 序列化结果按本机时区 `+08:00` 断言。
 
 ## 验收记录（2026-10-01）
 
@@ -119,3 +119,7 @@ golden 输入 payload 与期望值复刻自 `repos/kimi-planbar-tui`（只读参
 - `contextTokens`/`maxContextTokens` 不进渲染行（宿主 footer 第 2 行原生显示）。
 - booster 钱包默认不显示；开启 `booster = true` 后以 `boost 余额` 形式（纯 ASCII，cyan）附加在额度组内（仅 Ready 状态）。
 - 国际站（api.kimi.ai）纯 API key 用户的凭证兜底依赖 config.toml provider 匹配，OAuth 凭证不受影响。
+
+## 许可证
+
+[MIT](LICENSE) © 2026 Shawn Qi (shawn-0106t)；quota 端点与凭证加载逻辑派生自 [kimi-planbar](https://github.com/baigong-ai/kimi-planbar)（© baigong-ai，MIT），归属说明见 [NOTICE](NOTICE)。

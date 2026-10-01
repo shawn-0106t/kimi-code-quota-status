@@ -41,7 +41,7 @@
 ## 验证与测试
 
 - 常用命令：`cargo build --release`（静态单 exe）；`cargo test`（45 个单元测试）；`cargo test --test golden`（33 个 golden 逐字节 parity——golden 的 datetime 偏移固定 +08:00，测试内有时区 fail-fast，须在 UTC+08:00 机器上跑）；自检：`target/release/quota-status.exe --test-fetch`（headless 不写缓存，`error == null` 即链路正常，无凭证输出 `"error": "no-token"`）。
-- golden parity：对齐 `repos/kimi-planbar-tui/go/testdata/golden/quota-*.txt` 逐字节（CRLF 归一化；month 为本项目新增字段，3 个新 case 在本仓库 `testdata/golden/`，绝不回写参考仓库）。
+- golden parity：33 个 case 已全部内化 `testdata/golden/`（2026-10-01 从参考仓库逐字节复制 30 个既有 case，CI 自足；month 3 个原生），逐字节比对 + CRLF 归一化；参考仓库仍为上游事实来源，新增 case 绝不回写。
 - 真机验收六条见 SPEC §10.4；验收记录（含 2026-10-01 晚实装验收：footer 显示与活跃会话 1 分钟自动更新已通过、`/theme` 演练未触发）与偏差记录（体积 1.7MB 低于预估下限 3–5MB）见 README「验收记录」。
 
 ## 约定

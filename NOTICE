@@ -1,0 +1,12 @@
+The quota-endpoint and credential-loading logic in this project is derived
+from kimi-planbar (https://github.com/baigong-ai/kimi-planbar),
+Copyright (c) 2026 baigong-ai, used under the MIT License.
+
+Golden test vectors and parts of the parsing/credential modules were ported
+from kimi-planbar-tui (https://github.com/shawn-0106t/kimi-planbar-tui),
+Copyright (c) 2026 Shawn Qi, used under the MIT License.
+
+Note: kimi-planbar-tui's LICENSE also credits xifandev (KimiCodeBar) for TUI
+design lineage. No TUI/UI material from KimiCodeBar is present in this
+project (the statusline renderer semantics derive from the kimi-planbar
+Python prototype), so that copyright line is intentionally not carried over.
