@@ -4,21 +4,22 @@
 
 目标产物 `quota-status.exe`：Rust 静态单二进制，作为 Kimi Code CLI 的 statusline command（`~/.kimi-code/tui.toml` `[status_line]`），在 footer 第 1 行显示 Kimi For Coding 套餐额度（5h/week/month + reset 时间）。渲染路径只读本地缓存，缓存过期（TTL 60s）时派生 detached 子进程拉取 `/usages` 回填。
 
-**当前阶段：P0–P5 已全部实现并通过阶段验收**（2026-10-01；独立 code review 结论"可交付"，0 Critical/0 Major）。cargo 工程即仓库根，产物 `target/release/quota-status.exe` ≈1.7MB 静态单 exe。余下两条真机验收待用户 CLI 会话确认（SPEC §10.4 条 3/6：活跃会话 footer 显示与 1 分钟更新、`/theme` 重写演练），排查步骤见 README「故障排查」。
+**当前阶段：P0–P5 已全部实现并通过阶段验收**（2026-10-01）。2026-10-01 第三轮独立 code review 发现 2 Major（console CONOUT$ 句柄 access=0 致宽度查询恒失效、缓存新鲜判定把「可解析」相与进来架空 §4.4 防风暴）+ 3 Minor，已全部修复并补回归单测（SPEC bump v1.3）。cargo 工程即仓库根，产物 `target/release/quota-status.exe` ≈1.7MB 静态单 exe。余下真机验收待用户 CLI 会话确认（SPEC §10.4 条 3/6：活跃会话 footer 显示与 1 分钟更新、`/theme` 重写演练；另需在真机 console 复核 §7.5 宽度降级生效——本轮 Major 1 的修复点），排查步骤见 README「故障排查」。
 
 ## 实现落定要点（与参考实现/SPEC 旧文本的差异，均已过 review）
 
 - lib/bin 双目标：逻辑全在 `src/lib.rs`（供 `tests/golden.rs` 集成测试导入解析函数），`src/main.rs` 只做 argv 分发。
 - credentials 的 config.toml 逐行扫描为**手写解析**而非 regex（regex 不在 SPEC §11 依赖白名单），语义由移植单测钉死；匹配串已扩展为同时含 `api.kimi.ai/coding`（SPEC §5.2 勘误增强）。
 - 原子写 tmp 带 PID 后缀（`quota-status.json.<pid>.tmp`），消除并发 refresh 写同一 tmp 的竞态窗口。
+- 缓存新鲜判定为**纯 mtime**（SPEC §4.1 步骤 3 v1.3 钉死，Python `maybe_refresh` 同款）：与缓存是否可解析无关，空锚定/损坏/refresh 持续失败时靠回拨 mtime 压住派生风暴；锚定用 `create_new` 原子语义（绝不截断已有缓存），refresh 启动时清理 >60s 的孤儿 tmp。
 - month 段：limit 缺失/0/NaN 均不产生段；booster 开启时显示 `boost 余额`（纯 ASCII，避免 ¥ 在非 UTF-8 终端的兼容性问题）。
-- 错误分类：超时（含 body 阶段）→ `TaskCanceledException`；非 2xx 与其余传输错误 → `HttpRequestException`。
+- 错误分类：超时（含 body 阶段）→ `TaskCanceledException`；非 2xx 与其余传输错误 → `HttpRequestException`；body 阶段非超时错误（连接 reset、非法 UTF-8）→ `JsonException`（SPEC §5.1 v1.3 钉死）。
 
 ## 权威文档（动手前必读）
 
-- **docs/SPEC.md**（v1.2）——唯一契约事实来源。改行为前必读：§3 宿主契约、§5–6 数据层与解析防御规则、§7 渲染与降级、§10 测试契约、§11 工程约束、§12 风险。
-- **docs/PLAN.md**（v1.2）——P0–P5 分阶段计划（任务清单、可执行验收标准、依赖顺序），与 SPEC 冲突时以 SPEC 为准；文头有完成状态标注。
-- **docs/REVIEW.md**——第二轮独立复核报告（历史记录；其中 8 项发现已逐条仲裁并修订进 SPEC/PLAN，勿据旧表述回改）。
+- **docs/SPEC.md**（v1.3）——唯一契约事实来源。改行为前必读：§3 宿主契约、§5–6 数据层与解析防御规则、§7 渲染与降级、§10 测试契约、§11 工程约束、§12 风险。
+- **docs/PLAN.md**（v1.3）——P0–P5 分阶段计划（任务清单、可执行验收标准、依赖顺序），与 SPEC 冲突时以 SPEC 为准；文头有完成状态标注。
+- **docs/REVIEW.md**——第二轮独立复核报告（历史记录；其中 8 项发现已逐条仲裁并修订进 SPEC/PLAN，勿据旧表述回改）；**docs/REVIEW3.md**——第三轮实现后 code review 报告（2 Major/3 Minor 已全部修复，复核结论"可交付"）。
 
 ## 硬约束（违反即返工）
 
@@ -39,7 +40,7 @@
 
 ## 验证与测试
 
-- 常用命令：`cargo build --release`（静态单 exe）；`cargo test`（41 个单元测试）；`cargo test --test golden`（33 个 golden 逐字节 parity——golden 的 datetime 偏移固定 +08:00，测试内有时区 fail-fast，须在 UTC+08:00 机器上跑）；自检：`target/release/quota-status.exe --test-fetch`（headless 不写缓存，`error == null` 即链路正常，无凭证输出 `"error": "no-token"`）。
+- 常用命令：`cargo build --release`（静态单 exe）；`cargo test`（45 个单元测试）；`cargo test --test golden`（33 个 golden 逐字节 parity——golden 的 datetime 偏移固定 +08:00，测试内有时区 fail-fast，须在 UTC+08:00 机器上跑）；自检：`target/release/quota-status.exe --test-fetch`（headless 不写缓存，`error == null` 即链路正常，无凭证输出 `"error": "no-token"`）。
 - golden parity：对齐 `repos/kimi-planbar-tui/go/testdata/golden/quota-*.txt` 逐字节（CRLF 归一化；month 为本项目新增字段，3 个新 case 在本仓库 `testdata/golden/`，绝不回写参考仓库）。
 - 真机验收六条见 SPEC §10.4；已执行部分与偏差记录（体积 1.7MB 低于预估下限 3–5MB、两条待真机确认项）见 README「验收记录」。
 

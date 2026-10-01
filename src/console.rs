@@ -50,7 +50,9 @@ fn query_console_width() -> Option<u32> {
     let handle = unsafe {
         CreateFileW(
             conout.as_ptr(),
-            0, // 查询屏幕缓冲信息不需要访问权
+            // GENERIC_READ (0x8000_0000)：GetConsoleScreenBufferInfo 要求句柄
+            // 带读权限；access=0 会 ERROR_ACCESS_DENIED，宽度查询恒失败
+            0x8000_0000,
             FILE_SHARE_READ | FILE_SHARE_WRITE,
             std::ptr::null(),
             OPEN_EXISTING,
@@ -65,7 +67,8 @@ fn query_console_width() -> Option<u32> {
     let ok = unsafe { GetConsoleScreenBufferInfo(handle, &mut info) };
     unsafe { CloseHandle(handle) };
     if ok != 0 {
-        Some(info.dwSize.X as u32)
+        // dwSize.X 为 i16：理论负值经 try_from 落 None -> 兜底 120
+        u32::try_from(info.dwSize.X).ok()
     } else {
         None
     }
@@ -74,6 +77,7 @@ fn query_console_width() -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use windows_sys::Win32::System::Console::GetConsoleProcessList;
 
     /// 宽度不可得分支（PLAN P3 单测清单）：None/0 -> 120 兜底，正常值透传。
     #[test]
@@ -90,5 +94,22 @@ mod tests {
     fn console_width_sane() {
         let w = console_width();
         assert!(w > 0, "width = {w}");
+    }
+
+    /// CONOUT$ 句柄权限回归（access=0 的旧实现查询恒失败落 None）：进程
+    /// 附着 console 时 query_console_width 必须返回 Some；headless（无
+    /// console）跳过断言。
+    #[test]
+    fn query_width_succeeds_when_console_attached() {
+        let attached = unsafe {
+            let mut pid = 0u32;
+            GetConsoleProcessList(&mut pid, 1) > 0
+        };
+        if attached {
+            assert!(
+                query_console_width().is_some(),
+                "进程附着 console 但宽度查询失败（CONOUT$ 句柄权限问题？）"
+            );
+        }
     }
 }

@@ -7,6 +7,9 @@ use std::sync::OnceLock;
 use std::time::Duration;
 use ureq::Agent;
 
+/// 进程内 OnceLock 单例：**仅首次调用的 timeout 生效**，后续传参静默忽略。
+/// 当前每进程只在 quota::fetch 调用一次（--refresh/--test-fetch 单次取数），
+/// 无实际影响；渲染模式不取数、不触碰本 client。
 pub(crate) fn shared_client(timeout: Duration) -> &'static Agent {
     static CLIENT: OnceLock<Agent> = OnceLock::new();
     CLIENT.get_or_init(|| {

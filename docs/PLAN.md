@@ -1,9 +1,9 @@
 # quota-status 实现计划（PLAN）
 
-- 版本：v1.2（2026-10-01；同步 SPEC v1.2——P5 体积验收区间改为 ≤5MB）
-- 版本历史：v1.1（2026-10-01；同步 SPEC v1.1 修订）
-- **完成状态：P0–P5 已于 2026-10-01 全部实现并通过阶段验收**（独立 code review 结论"可交付"）。逐项验收数据、体积偏差说明与两条待真机确认项见 README「验收记录」；下文任务清单与验收标准保留撰写时原貌，不作勾选回填。
-- 契约依据：`docs/SPEC.md` v1.2（唯一事实来源；本计划一切行为要求以 SPEC 条目为准，冲突时以 SPEC 为准）
+- 版本：v1.3（2026-10-01；同步 SPEC v1.3——纯 mtime 新鲜判定与 send/body 阶段错误归类细分）
+- 版本历史：v1.2（2026-10-01；同步 SPEC v1.2——P5 体积验收区间改为 ≤5MB）；v1.1（2026-10-01；同步 SPEC v1.1 修订）
+- **完成状态：P0–P5 已于 2026-10-01 全部实现并通过阶段验收**；2026-10-01 第三轮独立 code review 发现 2 Major + 3 Minor 已全部修复并通过复核（结论"可交付"，报告见 `docs/REVIEW3.md`）。逐项验收数据、体积偏差说明与待真机确认项见 README「验收记录」；下文任务清单与验收标准保留撰写时原貌，不作勾选回填。**注意**：P2 任务清单中「缓存损坏（JSON 非法）→ 锚定 + 回拨 + 派生」一条按 SPEC v1.3 §4.1/§9 的纯 mtime 语义执行（损坏但新鲜不派生），冲突时以 SPEC 为准。
+- 契约依据：`docs/SPEC.md` v1.3（唯一事实来源；本计划一切行为要求以 SPEC 条目为准，冲突时以 SPEC 为准）
 - 路径约定：相对本仓库根；`<kimi_home>` = `~/.kimi-code`（受 env `KIMI_CODE_HOME` 覆盖，SPEC §5.2）
 - 工程布局决策（SPEC 未规定，本计划定为如下，可调整）：cargo 工程 = 本仓库根，即 `Cargo.toml`、`.cargo/config.toml`、`src/*.rs`、`tests/golden.rs`、`testdata/golden/`（本项目新增 golden 用，绝不回写 `repos/` 下参考仓库）
 - 参考资产路径勘误：golden 矩阵实际位于 `repos/kimi-planbar-tui/go/testdata/golden/`（30 个 `quota-*.txt`，本计划撰写时已 `ls | grep -c` 核实为 30）；`repos/kimi-planbar/go/testdata/golden/` 不存在（SPEC §2.3 勘误 1）

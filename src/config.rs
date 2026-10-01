@@ -5,7 +5,7 @@
 use std::path::Path;
 
 /// 行内字段（order 中的合法名字；未知名字忽略）
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Field {
     PermissionMode,
     Model,
@@ -86,9 +86,12 @@ pub fn parse(text: &str) -> Config {
     // [render] order：数组则采用（可为空 = 全部不显示），非数组落默认
     let order = val.get("render").and_then(|r| r.get("order"));
     if let Some(list) = order.and_then(|o| o.as_array()) {
+        // 重复字段只保留首次出现（同一字段渲染两次无意义）
+        let mut seen = std::collections::HashSet::new();
         cfg.order = list
             .iter()
             .filter_map(|v| v.as_str().and_then(parse_field))
+            .filter(|f| seen.insert(*f))
             .collect();
     }
 
@@ -240,5 +243,12 @@ http_timeout_seconds = 5
 
         let cfg = parse("[network]\nhttp_timeout_seconds = 0\n");
         assert_eq!(cfg.http_timeout_seconds, 1);
+    }
+
+    /// order 重复字段去重（保留首次出现；SPEC §8 未定义，同一字段不重复渲染）。
+    #[test]
+    fn order_duplicates_deduped() {
+        let cfg = parse("[render]\norder = [\"quota\", \"model\", \"quota\"]\n");
+        assert_eq!(cfg.order, vec![Field::Quota, Field::Model]);
     }
 }

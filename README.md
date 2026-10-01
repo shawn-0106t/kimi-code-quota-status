@@ -83,7 +83,7 @@ http_timeout_seconds = 8
 
 ```bash
 cargo build --release          # 产物 target/release/quota-status.exe（静态 CRT，无 runtime 依赖）
-cargo test                     # 40 单元测试
+cargo test                     # 45 单元测试
 cargo test --test golden       # golden parity（33 个 golden 逐字节对齐）
 ```
 

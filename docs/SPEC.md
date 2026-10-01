@@ -1,8 +1,8 @@
 # quota-status 契约文档（SPEC）
 
 - 项目：quota-status —— Rust 实现的 Kimi Code CLI statusline 额度显示器（单二进制 `quota-status.exe`）
-- 版本：v1.2（2026-10-01；P0–P5 实现落定后修订：§4.2 原子写 tmp 文件名带 PID、§5.2 凭证兜底标记已实现、§6.6 month 段 NaN 防御、§7.1 booster 显示格式、§10.2 month 新 case 数量与时区说明、§11 体积预算表述）
-- 版本历史：v1.1（2026-10-01；按第二轮复核 REVIEW.md 的 8 项发现修订 F1–F8）；v1.0
+- 版本：v1.3（2026-10-01；第三轮独立 code review 后修订：§4.1 新鲜判定钉死为纯 mtime 语义、§5.1 错误归类按 send/body 阶段细分、§9 缓存损坏行同步表述）
+- 版本历史：v1.2（2026-10-01；P0–P5 实现落定后修订）；v1.1（2026-10-01；按第二轮复核 REVIEW.md 的 8 项发现修订 F1–F8）；v1.0
 - 本文档与已定决策清单冲突时，以决策清单为准（本文已按决策清单如实收录；两处事实勘误见 §2.3）
 - 路径约定：所有 `path:line` 引用相对本仓库根（即本文件所在 `docs/` 目录的上一级）
 
@@ -141,7 +141,7 @@ command = "C:\\tools\\quota-status.exe"
 
 1. 读 stdin 到 EOF，`String::from_utf8_lossy` 后解析 JSON（解析失败按空 payload 处理，语义同 quota-status.py:177-181）。
 2. 读缓存 `~/.kimi-code/cache/quota-status.json`（§5.3）。
-3. 判定缓存年龄（文件 mtime）：`age ≥ TTL` → 先做 mtime 回拨，再派生 detached `--refresh` 子进程，**不等待、不读取其任何输出**。
+3. 判定缓存年龄（文件 mtime）：`age ≥ TTL` → 先做 mtime 回拨，再派生 detached `--refresh` 子进程，**不等待、不读取其任何输出**。新鲜判定**只看 mtime**，与缓存内容是否可解析无关（v1.3 钉死：空锚定/损坏/refresh 持续失败时，回拨后的 mtime 同样压住派生，retry 秒后自动重试——quota-status.py:135-149 `maybe_refresh` 同款纯 age 语义）。
 4. 按 `quota-bar.toml` 的字段开关与顺序拼一行带 ANSI 颜色的文本（§7），写入 stdout（UTF-8）+ 换行，exit 0。
 5. 无任何可渲染字段时输出空行——宿主拿到空首行会回退内置布局（§3.2），这是期望行为。
 6. 渲染路径禁网络、禁重 IO：只允许读 3 个小文件（缓存 JSON、`config.toml` 的 thinking 相关段、`quota-bar.toml`）+ 一次 console 宽度查询；热路径预算 **<10ms**，进程端到端（含启动）预算 <50ms。
@@ -178,6 +178,7 @@ command = "C:\\tools\\quota-status.exe"
 - 覆盖优先级：env `KIMI_CODE_BASE_URL` > `quota-bar.toml [network] base_url` > 默认值。base 值须含 version 段（如 `.../coding/v1`），工具去掉尾部 `/` 后拼 `/usages`。
 - Header：`Authorization: Bearer <token>`、`Accept: application/json`（quota.rs:85-86、kimi-planbar-tui SPEC §16.1）。
 - HTTP 超时 **8s**（决策清单；注意被抽取的 http.rs 原值 10s，http.rs:14，实现时改）。错误分类：超时 → `TaskCanceledException`，其他传输错误 → `HttpRequestException`（quota.rs:92-98）。
+- 错误归类按阶段细分（v1.3 钉死，消除"其余传输错误"的表述歧义）：send 阶段超时 → `TaskCanceledException`、非 2xx 与其余传输错误 → `HttpRequestException`；body 阶段（headers 已回）超时 → `TaskCanceledException`，body 阶段其余错误（连接 reset、非法 UTF-8 等）→ `JsonException`（body 非超时归类与参考实现 reqwest `.json()` 语义一致，repos/kimi-planbar-tui/rust/src/quota.rs:103-106；body 超时按本工具既定规则归 `TaskCanceledException`，属与参考实现的有意偏差）。
 - 仅 managed OAuth（Kimi For Coding）账号有此端点；纯 API key 账号返回 404（官方提示逐字 "Usage endpoint not available. Try Kimi For Coding."：managed-usage.ts:240-241）。非 2xx 一律归入 `HttpRequestException` 失败路径（quota.rs:100-102）。
 
 ### 5.2 凭证链（`load_token`，抽取自 credentials.rs:44-66）
@@ -346,7 +347,7 @@ http_timeout_seconds = 8                      # 默认 8s
 | 网络失败 / 超时（8s） | `HttpRequestException` / `TaskCanceledException`；不写缓存 | 旧缓存（LKG）继续渲染，**不清空**；30s 后 fast-retry |
 | 响应 JSON 解析失败 | `JsonException`；不写缓存 | 同上 |
 | 缓存缺失 / 首跑 | 渲染模式创建空缓存锚定 mtime → 回拨 → 派生 refresh | 首次额度组省略；成功写入后 ≤1s 内（宿主节流）出现 |
-| 缓存损坏（JSON 非法） | — | 当作缺失处理（重建锚定 + 派生），额度组省略 |
+| 缓存损坏（JSON 非法） | — | 当作缺失渲染（额度组省略），垃圾内容不清空；派生仍由纯 mtime 判定驱动（§4.4）：age ≥ TTL → 回拨 + 派生，TTL 内不反复派生 |
 | 终端宽度不足 | — | 内置降级阶梯（§7.5）：丢 reset → 丢 gitBranch → 只留额度组 → 宿主截断兜底 |
 | stdin JSON 非法 / 为空 | — | 按空 payload 渲染（字段缺失则省略），exit 0 |
 | 渲染进程超 300ms / 崩溃 | — | 宿主杀进程树（status-line-command.ts:75-78），沿用 last-good 行（:174-179）或回退内置布局 |

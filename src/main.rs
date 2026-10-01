@@ -23,12 +23,22 @@ fn config_toml_text() -> Option<String> {
 }
 
 fn main() {
-    let mode = std::env::args().nth(1);
+    // args_os：非 Unicode argv 不 panic（args() 会；panic=abort 下宿主回退内置 footer）
+    let mode = std::env::args_os().nth(1);
+    let mode = mode.as_deref().and_then(std::ffi::OsStr::to_str);
     let cfg = load_config();
-    match mode.as_deref() {
+    match mode {
         // 取数模式（SPEC §4.2）：凭证链 -> GET /usages（8s 超时，可配）->
         // 防御解析 -> 原子写缓存；任何失败不写缓存（LKG + fast-retry），总是 exit 0
         Some("--refresh") => {
+            // 清理孤儿 tmp（既往 refresh 在写 tmp 与 rename 之间被杀的残留）；
+            // 阈值 60s：在途 refresh 的 tmp 存活期 <1s，不会误删
+            if let Some(kimi) = credentials::kimi_home() {
+                cache::cleanup_stale_tmps_at(
+                    &cache::cache_path(&kimi),
+                    std::time::Duration::from_secs(60),
+                );
+            }
             let result = quota::fetch(cfg.base_url.as_deref(), cfg.http_timeout_seconds);
             if result.error.is_none() {
                 if let Some(kimi) = credentials::kimi_home() {
