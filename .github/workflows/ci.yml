@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set timezone to UTC+08:00 (golden parity fail-fast requirement)
+        run: tzutil /s "China Standard Time"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Unit tests
+        run: cargo test --lib --locked
+
+      - name: Golden parity tests
+        run: cargo test --test golden --locked
+
+      - name: Release build (static single exe)
+        run: cargo build --release --locked
+
+      - name: Assert exe size within 5MB budget (SPEC §11)
+        shell: pwsh
+        run: |
+          $size = (Get-Item target/release/quota-status.exe).Length
+          Write-Output "quota-status.exe: $size bytes"
+          if ($size -gt 5MB) { throw "exe exceeds 5MB budget: $size" }
