@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-02
+
 ### 新增
 
 - tasks/agents 徽章（SPEC v1.5 §7.7）：footer 第 1 行在额度组之前显示当前会话的后台任务计数——bash 后台任务 `[N task(s) running]`（cyan，经 `OpenProcess` + `GetExitCodeProcess` pid 存活校验）、后台 subagent `[M agent(s) running]`（running 即计入），两者皆零整段省略；数据源为 `<kimi_home>/sessions/` 扫描探测（workspace 探测 ≤64、任务 json 读取 ≤32，超限截断计数），sessionId 路径穿越防御 + 失败即省略，不阻塞渲染；默认 order 补入 `"tasks"`，从 order 删去即关闭整段并跳过扫描，不新增配置键
@@ -12,6 +14,7 @@
 ### 修复
 
 - tasks 徽章失败语义对齐契约（SPEC §7.7 决策 E / §9）：任务 json 读取/解析失败由「跳过该文件、保留部分计数」改为短路返回零计数（段整体省略），对应单测断言方向反转并补空态回归（二次独立 code review Major，经用户仲裁修代码对齐契约）；`agents/<id>/tasks/` 目录不存在按空态跳过（非失败），其余 IO 错误同样段整体省略
+- 补 M-1 确定性回归单测（三次 review Minor-1）：好任务按名称序先于坏文件被计数 + 跨 agent 省略用例，确定性钉死「短路时丢弃已积累计数」
 
 ### 文档
 
