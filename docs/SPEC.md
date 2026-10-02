@@ -1,8 +1,8 @@
 # quota-status 契约文档（SPEC）
 
 - 项目：quota-status —— Rust 实现的 Kimi Code CLI statusline 额度显示器（单二进制 `quota-status.exe`）
-- 版本：v1.4（2026-10-02；追加单色渲染开关：§7.2 colors=false 单色语义、§7.4 分隔符纯字符形态、§8 [render] colors 键、§10.1 单测项）
-- 版本历史：v1.3.2（2026-10-01；§11 补录 CI/Release 工程化设施与 CHANGELOG 约定）；v1.3.1（2026-10-01；golden 测试数据内化本仓库 `testdata/golden/`，CI 自足，§10.2 同步）；v1.3（2026-10-01；第三轮独立 code review 后修订：§4.1 新鲜判定钉死为纯 mtime 语义、§5.1 错误归类按 send/body 阶段细分、§9 缓存损坏行同步表述）；v1.2（2026-10-01；P0–P5 实现落定后修订）；v1.1（2026-10-01；按第二轮复核 REVIEW.md 的 8 项发现修订 F1–F8）；v1.0
+- 版本：v1.5（2026-10-02；追加 tasks/agents 徽章：§7.7 数据源与防御细则（新增小节）、§7.1 字段表与默认顺序、§7.2 色表、§8 默认 order 与开关说明、§3.5 sessionId 用途启用、§4.1 步骤 6 IO 预算放宽、§9 错误矩阵补一行、§10.1 单测项、§11 依赖白名单不变说明、§12 风险 ④⑤、§13 开放问题（新增小节）。同日评审修订与仲裁落实：§7.7 决策 C 按 kind 分裂——agent 侧 running 即计入（已仲裁放宽）、bash 侧维持 pid 校验并补 pid 类型防御；决策 B 并入 fallback 位置不扫描的定案；§9 将「超扫描上限」移出段省略触发条件（评审 Major 1，超限为截断非失败）；宿主事实块补第三种持久化 kind=question 与行号精修；§7.1/§10.1/§12/§13 连带更新。二次仲裁：question 任务维持保守不计入（定案），开放问题全部关闭、§13 小节移除）
+- 版本历史：v1.4（2026-10-02；单色渲染开关：§7.2 colors=false 单色语义、§7.4 分隔符纯字符形态、§8 [render] colors 键、§10.1 单测项）；v1.3.2（2026-10-01；§11 补录 CI/Release 工程化设施与 CHANGELOG 约定）；v1.3.1（2026-10-01；golden 测试数据内化本仓库 `testdata/golden/`，CI 自足，§10.2 同步）；v1.3（2026-10-01；第三轮独立 code review 后修订：§4.1 新鲜判定钉死为纯 mtime 语义、§5.1 错误归类按 send/body 阶段细分、§9 缓存损坏行同步表述）；v1.2（2026-10-01；P0–P5 实现落定后修订）；v1.1（2026-10-01；按第二轮复核 REVIEW.md 的 8 项发现修订 F1–F8）；v1.0
 - 本文档与已定决策清单冲突时，以决策清单为准（本文已按决策清单如实收录；两处事实勘误见 §2.3）
 - 路径约定：所有 `path:line` 引用相对本仓库根（即本文件所在 `docs/` 目录的上一级）
 
@@ -121,7 +121,7 @@ command = "C:\\tools\\quota-status.exe"
 | `planMode` | boolean | 不用 |
 | `contextUsage` | number | 不用（§3.4） |
 | `contextTokens` / `maxContextTokens` | number | 不用（§3.4） |
-| `sessionId` | string | 不用 |
+| `sessionId` | string | 定位会话任务目录（tasks/agents 徽章，§7.7；v1.5 起启用） |
 | `version` | string | 不用 |
 
 ---
@@ -144,7 +144,7 @@ command = "C:\\tools\\quota-status.exe"
 3. 判定缓存年龄（文件 mtime）：`age ≥ TTL` → 先做 mtime 回拨，再派生 detached `--refresh` 子进程，**不等待、不读取其任何输出**。新鲜判定**只看 mtime**，与缓存内容是否可解析无关（v1.3 钉死：空锚定/损坏/refresh 持续失败时，回拨后的 mtime 同样压住派生，retry 秒后自动重试——quota-status.py:135-149 `maybe_refresh` 同款纯 age 语义）。
 4. 按 `quota-bar.toml` 的字段开关与顺序拼一行带 ANSI 颜色的文本（§7），写入 stdout（UTF-8）+ 换行，exit 0。
 5. 无任何可渲染字段时输出空行——宿主拿到空首行会回退内置布局（§3.2），这是期望行为。
-6. 渲染路径禁网络、禁重 IO：只允许读 3 个小文件（缓存 JSON、`config.toml` 的 thinking 相关段、`quota-bar.toml`）+ 一次 console 宽度查询；热路径预算 **<10ms**，进程端到端（含启动）预算 <50ms。
+6. 渲染路径禁网络、禁重 IO：只允许读 3 个小文件（缓存 JSON、`config.toml` 的 thinking 相关段、`quota-bar.toml`）+ 一次 console 宽度查询 + 一次 tasks 目录扫描（v1.5 放宽，§7.7；受扫描上限约束——workspace 探测 ≤64、任务 json 读取 ≤32）；热路径预算 **<10ms**，进程端到端（含启动）预算 <50ms。
 
 ### 4.2 取数模式 `--refresh`
 
@@ -235,13 +235,14 @@ command = "C:\\tools\\quota-status.exe"
 
 ### 7.1 字段与顺序（用户选定；开关与顺序由 quota-bar.toml 控制）
 
-默认行内顺序：**permissionMode → model → thinking 级别 → 额度组(5h/week/month) → gitBranch**。每段"有值才显示"；段与段之间用灰色 `|` 分隔（§7.4）。
+默认行内顺序：**permissionMode → model → thinking 级别 → tasks/agents 徽章 → 额度组(5h/week/month) → gitBranch**（v1.5 起 tasks 徽章位于额度组之前）。每段"有值才显示"；段与段之间用灰色 `|` 分隔（§7.4）。
 
 | 段 | 数据源 | 有值条件 |
 |---|---|---|
 | permissionMode | stdin `permissionMode` | 非空 string |
 | model | stdin `model` | 非空 string（schema 已保证 string，status-line-command.ts:18；非 string 忽略） |
 | thinking | 旁路读 `<kimi_home>/config.toml` | 见 §7.2 |
+| tasks 徽章 | 会话任务目录扫描（§7.7，v1.5） | 至少一个计入计数的 running 任务——agent 侧 status=running 即计入、bash 侧经 pid 存活校验（§7.7 决策 C）；两计数皆零则整段省略 |
 | 额度组 | 缓存 fiveHour/week/month | 对应段存在且已开启 |
 | gitBranch | stdin `gitBranch` | 非 null 非空 |
 
@@ -254,6 +255,8 @@ thinking 阶梯（不在 stdin 快照里；语义同 quota-status.py:101-119）�
 
 `contextTokens`/`maxContextTokens` 不进本行（§3.4）。booster 钱包默认不显示（解析仍入库，供配置扩展）；v1.2 落定：`[render.quota] booster = true` 且 state=Ready 且 balanceCents 可用时，以 cyan `boost <余额元>`（纯 ASCII 两位小数，避免 ¥ 在非 UTF-8 终端的兼容性问题）附加在额度组内。
 
+tasks 徽章段格式（v1.5，数据源与防御规则见 §7.7）：段文本复刻宿主原生 footer 徽章——bash 侧 `[N task running]`（N=1）/ `[N tasks running]`，agent 侧 `[M agent running]` / `[M agents running]`（单复数按计数，footer.ts:483-488、489-494）。两计数皆非零时以**单个空格**连接构成本工具一段（宿主原生布局将各 slot 片段统一以双空格 join，footer.ts:327-330——单空格为本工具段内设计决策，与段间 `|` 分隔符的层级区分一致）；两计数皆零时整段省略。降级阶梯第 3 级（只留额度组）时随其余非额度段一并丢弃（§7.5 只删不重排语义）。
+
 ### 7.2 颜色码（basic SGR，宿主 chalk 包装不影响）
 
 | 元素 | 颜色 | ANSI |
@@ -265,13 +268,14 @@ thinking 阶梯（不在 stdin 快照里；语义同 quota-status.py:101-119）�
 | model | cyan | `36` |
 | thinking effort | cyan | `36` |
 | thinking off | 亮黑（灰） | `90` |
+| tasks 徽章（task/agent running） | cyan | `36` |
 | gitBranch | magenta | `35` |
 | 额度段 percent < 60 | 绿 | `32` |
 | 额度段 60 ≤ percent < 85 | 黄 | `33` |
 | 额度段 percent ≥ 85 | 红 | `31` |
 | 段间分隔符 `|`、额度组内分隔符 `·` | 灰 | `90` |
 
-依据：quota-status.py:21（阈值 85/60）、:195（permissionMode 色表）、:202（model cyan）、:111/:119（thinking 色）、:222（git magenta）。阈值边界：60 起黄、85 起红（`>= 85`、`>= 60`，quota-status.py:21）。每段以 `\033[0m` 结束重置。permissionMode 显示原值字符串。
+依据：quota-status.py:21（阈值 85/60）、:195（permissionMode 色表）、:202（model cyan）、:111/:119（thinking 色）、:222（git magenta）。阈值边界：60 起黄、85 起红（`>= 85`、`>= 60`，quota-status.py:21）。每段以 `\033[0m` 结束重置。permissionMode 显示原值字符串。tasks 徽章 cyan `36`（v1.5）：宿主原生徽章用主题 `colors.primary`（footer.ts:486、492），本工具无主题访问权，取最近似的信息色 cyan（与 model/thinking 同色系）。
 
 **单色开关（v1.4）**：`[render] colors = false` 时输出**纯文本、不含任何 SGR 序列**（分隔符与每段重置码一并省略）——宿主对 command 输出整行包一层主题前景色（`chalk.hex(colors.text)`，footer.ts:318），因此整行自动呈现为主题 text 色，与第 2 行 context 读数同色，并随 `/theme` 切换联动。此语义下本节色表与 §7.4 的 SGR 码全部停用，分隔符为纯字符 ` | ` / ` · `，可见宽度 = 字符数。注意不存在干净的"部分上色"中间态：段内 `\x1b[0m` 为全属性重置，重置后的文本落回终端默认色而非主题色。
 
@@ -301,6 +305,28 @@ thinking 阶梯（不在 stdin 快照里；语义同 quota-status.py:101-119）�
 - 输出字节强制 UTF-8；来自外部的字符串（路径、model 名等）先做 lossy 替换（`U+FFFD`），对应 Python 原型 `sys.stdout.reconfigure(encoding='utf-8', errors='replace')`（quota-status.py:171-175）——防中文 Windows GBK 管道乱码与 lone surrogate 崩溃。stdin 同样按 lossy UTF-8 读（§4.1）。
 - 输出恰一行（首行被宿主取用，§3.2），总长（含 ANSI）须 < 64KB（§3.3，实际远低于）。
 
+### 7.7 tasks/agents 徽章数据源与防御（v1.5 新增）
+
+> 本节分两块：**宿主事实**（已对照官方源码与本机真机核实，逐条标注 `repos/kimi-code/...` 出处）与**本工具设计决策**（v1.5 落定，非宿主行为）。两块在文字上明确区分，勿混淆。
+
+**宿主事实（已核实）**：
+
+- 持久化布局：每个后台任务落盘为 `<kimi_home>/sessions/<workspaceId>/<sessionId>/agents/<agentId>/tasks/<taskId>.json`（agentId 如 `main`、`agent-0`）。目录链出处：sessionDir = `<homeDir>/<sessions scope>/<workspaceId>/<sessionId>`（`repos/kimi-code/packages/agent-core-v2/src/workspace/sessionLifecycle/internal/addressing.ts:11-13`，workspace 持久化 scope 见 `repos/kimi-code/packages/agent-core-v2/src/workspace/workspaceInstance/workspaceInstanceManagerService.ts:203`）、agent scope = `<sessionScope>/agents/<agentId>`（addressing.ts:15-17）、任务文件 = `<scope>/tasks/<taskId>.json`（常量 `TASKS_SCOPE='tasks'`/`JSON_SUFFIX='.json'` 见 `repos/kimi-code/packages/agent-core-v2/src/agent/task/persist.ts:12, 14`，写入 `writeTask` 见 persist.ts:87-89、`agent/task/taskService.ts:245-250`）。本机 `~/.kimi-code/sessions/wd_*/session_*/agents/*/tasks/*.json` 实存结构与此一致（2026-10-02 真机核实）。
+- payload 的 `sessionId` 即目录名原文：宿主 `createSessionId()` 返回 `session_<randomUUID()>`（`repos/kimi-code/packages/agent-core-v2/src/workspace/sessionLifecycle/sessionLifecycleService.ts:903-905`），与 sessions 下的会话目录名一致。
+- 任务 json 关键字段（类型定义 `repos/kimi-code/packages/agent-core-v2/src/agent/task/types.ts:1-34, 64-92`；本机真机样例逐一吻合）：`status` ∈ running | completed | failed | timed_out | killed | lost——仅 running 为非终态，其余五态为终态（`TERMINAL_STATUSES`，types.ts:8-14）；`kind` 有三种会持久化的取值：`"process"` = bash 后台任务（带 command/pid/exitCode），`"agent"` = 后台 subagent（types.ts:81-87，带 agentId/subagentType，**无 pid 字段**——后台 agent 是 CLI 进程内异步任务，非独立 OS 进程），`"question"` = ask-user-question 工具的后台提问任务（types.ts:88-92，带 questionCount/toolCallId，同样**无 pid 字段**；创建链见 `agent/tools/ask-user-question/askUserQuestionTool.ts:223` 与 `question-background-task.ts:24-25` 的 `QuestionBackgroundTask`，与 bash/agent 同走 taskService 管道与 `writeTask` 持久化）；另有 `detached`、`startedAt`/`endedAt`（Unix 毫秒）等。本机 sessions 未发现 question 任务 json（2026-10-02 grep 核实，源码证据链完整）。
+- 宿主内存计数口径（footer 徽章的数据来源）：非终态任务按 kind 分流——`kind === 'agent'` → agentTasks，否则（含 `"process"`、`"question"`）→ bashTasks（`repos/kimi-code/apps/kimi-code/src/tui/controllers/session-event-handler.ts:1287-1308`；同款口径 `apps/kimi-code/src/tui/utils/message-replay.ts:97-113`）；两计数独立隐藏——零不显示（`apps/kimi-code/src/tui/components/chrome/footer.ts:290-300`）。即 running 的 question 任务在宿主原生徽章中计入 bash 侧显示为 `[N tasks running]`。
+- 陈旧场景：CLI 崩溃会在盘上遗留 status=running 的任务文件（宿主内存计数随进程消失归零，盘上仍 running）；宿主**重启加载会话时**会把非终态遗留任务标 `lost` 写回（`repos/kimi-code/packages/agent-core-v2/src/agent/task/taskService.ts:931-945` `markLoadedTasksLost`）——遗留窗口 = 崩溃后、重启加载前。
+- 背景注记（本工具不实现）：workspaceId 形如 `wd_<slug>_<hash12>`，由 workspace 根目录经 `encodeWorkDirKey` 生成——目录名 slug 化 + 正则化路径 sha256 前 12 位 hex（`repos/kimi-code/packages/agent-core-v2/src/_base/utils/workdir-slug.ts:3-5, 17-23`）。
+
+**本工具设计决策（v1.5 落定）**：
+
+- **A 定位：扫描探测而非 sha256 反推**。read_dir `<kimi_home>/sessions/` → 逐 workspace 目录探测 `<ws>/<sessionId>` 子目录是否存在（sessionId 全局唯一，命中即定位；payload `sessionId` 缺失/为空 → 段省略）。理由：避免为 sha256 新增依赖（§11 白名单无 sha2，且还须复刻 workdir-slug.ts 的路径正则化细节）、容忍 cwd ≠ workspace.root（payload `cwd` 不用，§3.5）、成本仅 O(workspace 数) 次 stat。
+- **B 路径防御与扫描范围**：sessionId 来自宿主 payload，拼接路径前必须校验——含 `/`、`\` 或 `..` 时直接视为无效（段省略），防路径穿越。定位命中后遍历 `<sessionDir>/agents/*/tasks/*.json` 读取任务文件（文件名不校验、以 json 内容为准）。**仅扫 `agents/*/tasks/`，不兼容宿主旧版 CLI 写在 `<sessionDir>/tasks/` 直下的存量数据**（2026-10-02 已仲裁定案：宿主 main agent 持久化的 fallback 仅读旧数据用——persist.ts:99-103、151-154，现行 CLI 写入只走新路径 persist.ts:87-89；本机核实该位置无数据）。
+- **C 陈旧防御：按 kind 分裂（2026-10-02 仲裁）**。`kind == "agent"` 的任务 json 无 pid 字段（见宿主事实块），**status=running 即计入 agent 计数，不做 pid 校验**——接受 CLI 崩溃场景下 agent 计数的陈旧误报，宿主重启加载会话会把遗留任务标 `lost` 自愈（见宿主事实块）。其余一切 kind（`"process"`、`"question"`、未知值、缺失）走 **pid 存活校验**：status=running 的任务须用 json 内 pid 校验进程存活——`windows-sys` 的 `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` + `GetExitCodeProcess`，句柄 NULL 或 exit code ≠ STILL_ACTIVE(259) → 视为已结束不计入；**pid 字段缺失或非正整数（字符串形态、负数、小数、超出 u32 等敌意形态）视同缺失，保守不计入**。推论：`kind=question` 的 running 任务因无 pid 恒不计入——与宿主把它归 bash 侧显示的口径存在已知偏差（2026-10-02 二次仲裁定案：维持保守不计入，宁少报勿误报）。
+- **D 扫描上限**（防病态目录拖垮 300ms 渲染预算）：workspace 探测数 ≤64、任务 json 读取数 ≤32，超限即停止并**按已读结果计数**（截断不是失败，不触发段省略）。
+- **E 失败即省略**：sessions 目录不存在、json 解析失败、任何 IO 错误 → 段整体省略，绝不阻塞渲染、绝不 panic（与 §9 精神一致）。
+- 计数口径：仅 `status == "running"` 参与计数（五类终态跳过，未知 status 同样跳过）；`kind == "agent"`（严格字符串相等，对齐宿主 `===` 语义）→ agent 计数（running 即计入，决策 C），其余一切值 → bash 侧（经 pid 校验）。与宿主内存口径的差异仅两处已知偏差：bash 侧 pid 校验比宿主更严（宿主内存计数天然权威，本工具只有盘上数据）、question 侧不计入（已仲裁定案）。
+
 ---
 
 ## 8. 配置文件 `~/.kimi-code/quota-bar.toml`
@@ -312,7 +338,7 @@ thinking 阶梯（不在 stdin 快照里；语义同 quota-status.py:101-119）�
 
 [render]
 # 行内字段顺序（可删减、可重排；未列出的字段不显示）
-order = ["permission_mode", "model", "thinking", "quota", "git_branch"]
+order = ["permission_mode", "model", "thinking", "tasks", "quota", "git_branch"]
 # 单色开关：false 时输出纯文本（无任何 SGR），整行由宿主包装为主题 text 色
 #（与第 2 行 context 同色，随 /theme 联动）；默认 true 保持多彩配色
 colors = true
@@ -341,6 +367,8 @@ http_timeout_seconds = 8                      # 默认 8s
 
 优先级：env `KIMI_CODE_BASE_URL` > `[network] base_url` > 内置默认。`order` 中出现未知字段名时忽略该字段（不失败）。
 
+tasks 徽章（v1.5）**不新增任何配置键**：开关即 order——从 order 删去 `"tasks"` 关闭整段（连带跳过 sessions 目录扫描，省 IO，语义同 thinking 段的开关省 IO 惯例），加回即启用；两计数皆零时无论配置如何整段省略。注意：v1.5 之前已显式写了 `order` 的既有配置不含 `"tasks"`，按 order 语义徽章不显示——属预期行为而非缺陷，需要徽章的用户把 `"tasks"` 加进自己的 order 即可。
+
 ---
 
 ## 9. 错误与降级矩阵
@@ -355,6 +383,7 @@ http_timeout_seconds = 8                      # 默认 8s
 | 缓存损坏（JSON 非法） | — | 当作缺失渲染（额度组省略），垃圾内容不清空；派生仍由纯 mtime 判定驱动（§4.4）：age ≥ TTL → 回拨 + 派生，TTL 内不反复派生 |
 | 终端宽度不足 | — | 内置降级阶梯（§7.5）：丢 reset → 丢 gitBranch → 只留额度组 → 宿主截断兜底 |
 | stdin JSON 非法 / 为空 | — | 按空 payload 渲染（字段缺失则省略），exit 0 |
+| 会话任务目录扫描失败（sessions 目录不存在 / sessionId 无效或含穿越串 / 任务 json 解析失败 / IO 错误） | — | tasks 徽章段整体省略，其余字段正常渲染，不阻塞、不 panic（§7.7 决策 B/E；v1.5）。注意**超扫描上限不在省略触发之列**：超限即停止并按已读结果计数（§7.7 决策 D，截断非失败） |
 | 渲染进程超 300ms / 崩溃 | — | 宿主杀进程树（status-line-command.ts:75-78），沿用 last-good 行（:174-179）或回退内置布局 |
 | quota-bar.toml 缺失 / 非法 | — | 全部内置默认，渲染照常 |
 | tui.toml 丢 `[status_line]` | — | 额度行整体消失（宿主不再调用），见风险① |
@@ -369,6 +398,7 @@ http_timeout_seconds = 8                      # 默认 8s
 - 解析防御规则 §6 每条至少一个 case，以 quota.rs:243-374 与 `repos/kimi-planbar-tui/go/internal/core/quota_test.go` 为蓝本（字符串/数字混排、除零、`isEnabled=false`、单位四舍五入、`i64::MIN` 敌意值、reset 阶梯）。
 - 凭证链：credentials.rs:115-147 的两个既有单测函数原样移植（覆盖紧凑/带空格节名、节结算、空 api_key 拒绝场景）。
 - 本工具新增：thinking 阶梯（enabled=false / effort / models 回退）、颜色阈值边界（59.x/60/84.x/85）、reset 跨天格式、宽度降级阶梯、UTF-8 lossy、mtime 回拨计算（`now-TTL+30`）、月段有/无 limit、colors 单色开关两态（false 时输出不含任何 SGR 且可见内容与彩色版一致）。
+- tasks 徽章（v1.5，§7.7）：workspace 探测（sessionId 命中 / 未命中 / 路径穿越拒绝——含 `/`、`\`、`..` 的 sessionId 视为无效）、计数分流（kind=process 经 pid 校验计入 bash、kind=agent running 即计入 agent、kind=question 无 pid 不计入、五类终态与未知 status 不计入、kind 缺失归 bash 侧）、pid 存活防御 bash 三例（存活进程计入 / 已退出进程不计入 / pid 缺失或非正整数不计入）+ agent 一例（running 即计入，不做 pid 校验）、扫描上限（>64 workspace、>32 任务 json 截断后按已读结果计数、不触发段省略）、渲染位置（tasks 段位于额度组之前）与 colors=false 单色组合（无 SGR、两徽章单空格连接）。
 
 ### 10.2 golden parity（30 case 对齐）
 
@@ -400,7 +430,7 @@ http_timeout_seconds = 8                      # 默认 8s
 
 - cargo 单 crate；仅 Windows x64 目标（`x86_64-pc-windows-msvc` + `.cargo/config.toml` 里 `rustflags = ["-C", "target-feature=+crt-static"]` 静态链接 CRT），产物无 runtime 依赖。
 - release profile：`opt-level = "s"`、`lto = true`、`codegen-units = 1`、`strip = true`、`panic = "abort"`。
-- 依赖取向（控制体积）：`serde`/`serde_json`、`chrono`、`toml`（quota-bar.toml 与 config.toml 的 thinking/models 段）、HTTP 用阻塞式轻量 client（首选 `ureq` + rustls + 打包根证书；若换 `reqwest` 必须 blocking + rustls），`filetime`（mtime 回拨）、`windows-sys`（console 宽度、creation flags）。**不引入 tokio/async**——取数是一次性阻塞调用，渲染是派生后即退出。
+- 依赖取向（控制体积）：`serde`/`serde_json`、`chrono`、`toml`（quota-bar.toml 与 config.toml 的 thinking/models 段）、HTTP 用阻塞式轻量 client（首选 `ureq` + rustls + 打包根证书；若换 `reqwest` 必须 blocking + rustls），`filetime`（mtime 回拨）、`windows-sys`（console 宽度、creation flags）。**不引入 tokio/async**——取数是一次性阻塞调用，渲染是派生后即退出。**v1.5 依赖白名单不变**：tasks 徽章的 pid 存活校验复用既有 `windows-sys`（`Win32_System_Threading` feature：`OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` + `GetExitCodeProcess`，该 feature 在工程依赖声明中已启用），不新增 crate。
 - 体积预算：静态 exe **≤5MB**（v1.2：原"3–5MB"为撰写时的预估区间，实现实测 1,788,928 字节 ≈1.7MB，预算按上限约束执行）；超预算时优先换 HTTP/TLS 后端。
 - 渲染路径禁网络、禁重 IO（<10ms 预算）；取数路径 HTTP 超时 8s。
 - stdout 强制 UTF-8（errors=replace 语义，§7.6）；detached 子进程 `CREATE_NO_WINDOW | DETACHED_PROCESS` + stdio DEVNULL（§4.4）。
@@ -416,3 +446,7 @@ http_timeout_seconds = 8                      # 默认 8s
 | ① | 偏好保存（如 `/theme`）会整文件重写 tui.toml：当前 main 中 status_line 的 command/items 值 round-trip 保真（config.ts:298-312），丢失的是段内注释与未知键；0.31.1 时代报告的"整段静默丢失"属旧版本行为，未在当前源码复现 | 文档写明"额度行消失先查此"（§10.4 验收 6）：先确认 command 值是否存活（round-trip 应保真）；旧版本遇整段丢失则补回 `[status_line] command` 并 `/reload-tui` |
 | ② | usages API 结构随版本漂移 | 防御解析（§6）+ golden 回归（§10.2）：漂移通常表现为字段缺失/类型变化，落入既有兜底而非 panic；新增漂移形态补 golden case |
 | ③ | 非 managed OAuth 账号无端点（404） | 404/无 token 时额度段整体省略，不阻塞其余字段（§9）；`--test-fetch` 可自证 `error` 类型 |
+| ④ | 任务 json 为宿主内部持久化格式、无对外契约，随 CLI 升级漂移（字段改名、目录迁移、新增 kind 等）（v1.5） | 防御式读取（§7.7）：status/kind 按宽容规则解析（未知 status 视为终态跳过、未知 kind 归 bash 侧），漂移表现为段省略或计数偏差而非 panic/阻塞；漂移确认后按新格式适配并补单测。含目录形态漂移的已定边界：旧版 CLI 写在 `<sessionDir>/tasks/` 直下的存量数据**默认不兼容**（§7.7 决策 B，2026-10-02 仲裁定案），如需兼容须修订 §7.7 |
+| ⑤ | CLI 崩溃遗留 status=running 的孤儿任务文件（宿主重启加载时自会标 lost，taskService.ts:931-945；未重启窗口内需本工具兜底）；pid 校验存在 PID 复用理论残留（进程退出后 pid 被复用 → 误计为存活）（v1.5） | 按决策 C 分裂（§7.7）：bash 侧（process/question/未知 kind）pid 存活校验——句柄 NULL 或 exit code ≠ STILL_ACTIVE(259) 不计入、pid 缺失或非正整数视同缺失；agent 侧 running 即计入、**明确接受** CLI 崩溃场景下的陈旧误报（窗口 = 崩溃后至宿主重启加载，随后自愈）。PID 复用窗口极小且后果仅为徽章短暂多计一项，可接受 |
+
+---

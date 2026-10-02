@@ -1,9 +1,9 @@
 # quota-status 实现计划（PLAN）
 
-- 版本：v1.4（2026-10-02；追加 P6 单色渲染开关迭代，同步 SPEC v1.4）
-- 版本历史：v1.3（2026-10-01；同步 SPEC v1.3——纯 mtime 新鲜判定与 send/body 阶段错误归类细分）；v1.2（2026-10-01；同步 SPEC v1.2——P5 体积验收区间改为 ≤5MB）；v1.1（2026-10-01；同步 SPEC v1.1 修订）
-- **完成状态：P0–P5 已于 2026-10-01 全部实现并通过阶段验收**；2026-10-01 第三轮独立 code review 发现 2 Major + 3 Minor 已全部修复并通过复核（结论"可交付"，报告见 `docs/REVIEW3.md`）。逐项验收数据、体积偏差说明与待真机确认项见 README「验收记录」；下文任务清单与验收标准保留撰写时原貌，不作勾选回填。**注意**：P2 任务清单中「缓存损坏（JSON 非法）→ 锚定 + 回拨 + 派生」一条按 SPEC v1.3 §4.1/§9 的纯 mtime 语义执行（损坏但新鲜不派生），冲突时以 SPEC 为准。
-- 契约依据：`docs/SPEC.md` v1.4（唯一事实来源；本计划一切行为要求以 SPEC 条目为准，冲突时以 SPEC 为准）
+- 版本：v1.5（2026-10-02；追加 P7 tasks/agents 徽章迭代，同步 SPEC v1.5。同日评审修订与仲裁落实：P7 任务清单/验收/风险按仲裁更新——决策 C 按 kind 分裂（agent 侧 running 即计入已仲裁、bash 侧维持 pid 校验并补 pid 类型防御）、fallback 不扫描定案并入、超扫描上限语义统一为截断非失败；补 P6 完成状态与里程碑链追加迭代段。二次仲裁：question 任务维持不计入定案，SPEC §13 关闭移除）
+- 版本历史：v1.4（2026-10-02；追加 P6 单色渲染开关迭代，同步 SPEC v1.4）；v1.3（2026-10-01；同步 SPEC v1.3——纯 mtime 新鲜判定与 send/body 阶段错误归类细分）；v1.2（2026-10-01；同步 SPEC v1.2——P5 体积验收区间改为 ≤5MB）；v1.1（2026-10-01；同步 SPEC v1.1 修订）
+- **完成状态：P0–P5 已于 2026-10-01 全部实现并通过阶段验收**；2026-10-01 第三轮独立 code review 发现 2 Major + 3 Minor 已全部修复并通过复核（结论"可交付"，报告见 `docs/REVIEW3.md`）。**P6 已于 2026-10-02 交付**（commit `e4ced6f`：config/render 实现 + 47 个单测 + SPEC/PLAN/README/AGENTS/CHANGELOG 同步，独立 code-reviewer 复核 v1.4 范围零发现；真机同色验收见 README/CHANGELOG 记录）。逐项验收数据、体积偏差说明与待真机确认项见 README「验收记录」；下文任务清单与验收标准保留撰写时原貌，不作勾选回填。**注意**：P2 任务清单中「缓存损坏（JSON 非法）→ 锚定 + 回拨 + 派生」一条按 SPEC v1.3 §4.1/§9 的纯 mtime 语义执行（损坏但新鲜不派生），冲突时以 SPEC 为准。
+- 契约依据：`docs/SPEC.md` v1.5（唯一事实来源；本计划一切行为要求以 SPEC 条目为准，冲突时以 SPEC 为准）
 - 路径约定：相对本仓库根；`<kimi_home>` = `~/.kimi-code`（受 env `KIMI_CODE_HOME` 覆盖，SPEC §5.2）
 - 工程布局决策（SPEC 未规定，本计划定为如下，可调整）：cargo 工程 = 本仓库根，即 `Cargo.toml`、`.cargo/config.toml`、`src/*.rs`、`tests/golden.rs`、`testdata/golden/`（本项目新增 golden 用，绝不回写 `repos/` 下参考仓库）
 - 参考资产路径勘误：golden 矩阵实际位于 `repos/kimi-planbar-tui/go/testdata/golden/`（30 个 `quota-*.txt`，本计划撰写时已 `ls | grep -c` 核实为 30）；`repos/kimi-planbar/go/testdata/golden/` 不存在（SPEC §2.3 勘误 1）
@@ -19,6 +19,7 @@
 | P4 | 测试与 golden parity | 30 case 逐字节对齐 + month 新 case + `--test-fetch` | P1, P3 |
 | P5 | 构建交付与安装文档 | 体积/性能达标 exe + README 安装文档 + 真机验收 | P0–P4 全部 |
 | P6 | 单色渲染开关（2026-10-02 追加） | `[render] colors` 键 + 单色渲染路径 + 单测 + 重新部署 | P5 |
+| P7 | tasks/agents 徽章（2026-10-02 追加） | `src/tasks.rs` 扫描计数 + `Field::Tasks` + 渲染接线 + 单测 + 重新部署 | P6 |
 
 ---
 
@@ -283,9 +284,54 @@
 
 ---
 
+## P7 追加迭代：tasks/agents 徽章（2026-10-02）
+
+### 目标
+
+实现 SPEC v1.5 §7.7/§7.1/§7.2/§8 的 tasks/agents 徽章：渲染行在额度组之前插入后台任务徽章段（`[N task(s) running]` / `[M agent(s) running]`，cyan 36，`colors = false` 时随单色路径输出纯文本），数据源为本地 sessions 目录扫描探测 + pid 存活校验，全程防御式——任何失败段整体省略，绝不阻塞渲染、绝不 panic。宿主事实与设计决策的区分见 SPEC §7.7 两分块，本节只列实现动作。
+
+### 任务清单
+
+- [ ] 新建 `src/tasks.rs`，对外暴露"payload sessionId + `<kimi_home>` → (bash_count, agent_count)"的纯逻辑入口：
+  - [ ] workspace 扫描探测（SPEC §7.7 决策 A）：read_dir `<kimi_home>/sessions/` → 逐 workspace 目录探测 `<ws>/<sessionId>` 子目录是否存在（sessionId 全局唯一，命中即定位；缺失/为空 → 段省略）
+  - [ ] sessionId 路径防御（决策 B）：含 `/`、`\`、`..` → 视为无效直接返回零计数；定位命中后遍历 `<sessionDir>/agents/*/tasks/*.json`（文件名不校验、以 json 内容为准）
+  - [ ] 计数分流：仅 `status == "running"` 参与计数（五类终态与未知 status 跳过）；`kind == "agent"`（严格字符串相等）→ agent 计数，**running 即计入、不做 pid 校验**（2026-10-02 已仲裁放宽，SPEC §7.7 决策 C）；其余一切值（含 `"process"`、`"question"`、未知 kind、缺失）→ bash 侧经 pid 校验（口径对齐 SPEC §7.7，宿主计数出处 session-event-handler.ts:1287-1308）
+  - [ ] pid 存活校验（决策 C bash 侧）：复用既有 `windows-sys` 依赖（`Win32_System_Threading` feature 已启用，不新增 crate）——`OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` + `GetExitCodeProcess`；句柄 NULL 或 exit code ≠ STILL_ACTIVE(259) 不计入；pid 字段缺失或非正整数（字符串形态、负数、小数、超 u32 等敌意形态）视同缺失不计入（`kind=question` 无 pid ⇒ 恒不计入，2026-10-02 仲裁定案）
+  - [ ] 扫描上限（决策 D）：workspace 探测数 ≤64、任务 json 读取数 ≤32，超限停止并按已读结果计数
+  - [ ] 失败即省略（决策 E）：sessions 目录不存在、json 解析失败、任何 IO 错误 → 零计数返回，不 panic
+- [ ] `src/config.rs`：`Field` 枚举增加 `Tasks` 变体；`parse_field` 认识 `"tasks"`；内置默认 order 改为 `["permission_mode", "model", "thinking", "tasks", "quota", "git_branch"]`（SPEC §8 v1.5；不新增任何配置键）
+- [ ] `src/render.rs`：`render_line` 内调用 tasks 计数**一次**，结果传入各 `render_variant` 降级变体（现状每进程 `render_variant` 被调用 4 次——full/no_reset/no_git/quota_only，计数必须在外层算一次传入，避免目录扫描被执行 4 次）；`Field::Tasks` 分支拼段：bash/agent 徽章单空格连接、皆零省略、cyan 36、`colors = false` 纯文本；quota_only 降级变体随现有 `*field != Field::Quota` 跳过逻辑自然丢弃（只删不重排，SPEC §7.1/§7.5）
+- [ ] 单测（SPEC §10.1 v1.5 清单）：workspace 探测（sessionId 命中/未命中/三类穿越串拒绝）、计数分流（process 经 pid 校验计入 bash / agent running 即计入 / question 无 pid 不计入 / 五类终态与未知 status 不计入 / kind 缺失归 bash 侧）、pid 防御 bash 三例（存活/已退出/pid 缺失或非正整数）+ agent 一例（running 即计入）、扫描上限截断（不触发段省略）、渲染位置（tasks 位于额度组之前）与 colors=false 单色组合
+- [ ] 文档同步：SPEC v1.5（本次完成）；README 配置示例默认 order 补 `"tasks"`、AGENTS.md 实现落定要点补一条（P7 执行时）
+- [ ] `cargo fmt --check` / `cargo clippy --all-targets -- -D warnings` / 全量测试 / release 构建后重新部署 `~/.kimi-code/bin/quota-status.exe`
+- [ ] CHANGELOG `[Unreleased]` 记录
+
+### 涉及文件
+
+- 新建：`src/tasks.rs`（workspace 探测 + 计数 + pid 校验，纯逻辑 + 单测）
+- 修改：`src/config.rs`（`Field::Tasks` + `parse_field` + 默认 order）、`src/render.rs`（`render_line` 计数一次传入各降级变体 + `Field::Tasks` 渲染分支）
+- 只读参考：`repos/kimi-code/` 的 `apps/kimi-code/src/tui/components/chrome/footer.ts`（徽章格式）、`apps/kimi-code/src/tui/controllers/session-event-handler.ts`（计数口径）、`packages/agent-core-v2/src/agent/task/persist.ts`/`types.ts`/`taskService.ts`（持久化布局与字段，含 kind=question 变体与创建链 `agent/tools/ask-user-question/`）、`packages/agent-core-v2/src/_base/utils/workdir-slug.ts`（背景注记，不实现）——宿主事实已录 SPEC §7.7
+
+### 验收标准
+
+1. `cargo test` 全绿（tasks 模块新增单测通过），fmt/clippy 门禁零告警
+2. 真机可观察行为（临时 `KIMI_CODE_HOME`，不污染真实数据）：伪造 `<tmp>/sessions/wd_fake_000000000000/<sessionId>/agents/main/tasks/<taskId>.json`（`status:"running"`、`kind:"process"`、`pid:` 一个存活子进程的 pid），`printf '%s' '{"model":"m","sessionId":"<sessionId>"}' | KIMI_CODE_HOME=<tmp> target/release/quota-status.exe | cat -v` → 输出含 cyan 徽章 `[1 task running]` 且该段位于额度组之前；终止子进程后再渲染 → 徽章消失（pid 校验生效）
+3. 防御观察（同临时环境）：sessionId 含 `..` / `/` / `\` 时无徽章且渲染正常 exit 0；`<tmp>` 无 sessions 目录时渲染正常 exit 0；写一个 `status:"completed"` 的任务 json → 不产生徽章（终态跳过）
+4. agent 侧观察（同临时环境）：另写一个 `kind:"agent"`、`status:"running"`、无 pid 的任务 json → 渲染输出含 `[1 agent running]`（running 即计入，不做 pid 校验——2026-10-02 仲裁）；与 bash 徽章并存时输出 `[1 task running] [1 agent running]`（单空格连接）
+5. 部署后真机 footer：发起一个后台 bash 任务（如 detached 长命令）→ footer 第 1 行出现 `[1 task running]` 徽章（cyan）；任务结束后徽章随下一次重渲染消失（活跃会话 ≤1s + 节流，SPEC §3.3）
+
+### 风险与回退
+
+- 风险：任务 json 为宿主内部格式、无对外契约，CLI 升级可能漂移（SPEC §12 ④）。缓解：防御式解析，漂移表现为段省略/计数偏差而非 panic；漂移确认后补适配与单测
+- 风险：agent 侧 running 即计入（2026-10-02 已仲裁放宽）接受 CLI 崩溃场景的陈旧误报——窗口 = 崩溃后至宿主重启加载（自愈），已记录于 SPEC §12 ⑤；question 任务无 pid 恒不计入已仲裁定案（保守不计入，宁少报勿误报），若将来放宽，改动限于 `src/tasks.rs` 计数函数一处 + 单测
+- 风险：扫描最坏成本（64 次 stat + 32 个 json 读取 + read_dir 枚举）超出热路径预算。缓解：上限即预算护栏（决策 D，超限截断非失败）；真机验收计时，若超标先收紧上限再回报决策
+- 回退：默认 order 移除 `"tasks"`（或用户 order 不含 `"tasks"`）即完全停用该段、连带跳过扫描；代码回退 revert 本迭代提交即可
+
+---
+
 ## 里程碑依赖关系（文字版）
 
-严格串行主链：**P0 → P1 → P2 → P3 → P4 → P5**。
+严格串行主链：**P0 → P1 → P2 → P3 → P4 → P5**，其后为追加迭代链 **P6（已完成）→ P7**（依赖与产出关系见上表；P6/P7 是对已交付功能的增量迭代，不回改主链行为）。
 
 - P0 是全部阶段的地基（crate、profile、依赖、入口骨架）；依赖版本与 feature 在此锁定，后续阶段不新增 SPEC §11 白名单之外的依赖。
 - P1 依赖 P0；产出纯逻辑层（凭证/HTTP/解析），是 P2 取数流程与 P4 golden parity 的共同前置。P1 的固定时钟注入设计直接决定 P4 能否无返工复刻（见 P4 风险 2）。
@@ -319,7 +365,7 @@
 3. **首版仅 Windows x64**（`x86_64-pc-windows-msvc` + crt-static），不做跨平台抽象（SPEC §1.2/§11）。
 4. **不做交互式 TUI**；booster 钱包余额默认不显示（解析仍入库，供配置扩展）（SPEC §1.2/§7.1）。
 5. **不引入 tokio/async**——取数是一次性阻塞调用，渲染派生后即退出（SPEC §11）。
-6. **渲染路径禁网络、禁重 IO**：只允许读 3 个小文件 + 一次 console 宽度查询；热路径 <10ms、端到端 <50ms（SPEC §4.1/§11）。
+6. **渲染路径禁网络、禁重 IO**：只允许读 3 个小文件 + 一次 console 宽度查询 + 一次 tasks 目录扫描（受 §7.7 上限约束：workspace 探测 ≤64、任务 json ≤32，v1.5）；热路径 <10ms、端到端 <50ms（SPEC §4.1/§11）。
 7. **不回写 `repos/` 下任何参考仓库**（只读参考）；month 新 golden 只放本项目 `testdata/`（SPEC §10.2）。
 8. **任何失败保留 LKG**：刷新失败不写缓存、渲染不清空已有额度数据（SPEC §5.3/§9）；渲染模式任何情况下 exit 0，stdout 首行为空时即宿主回退内置布局——不输出报错文本占行（SPEC §3.2/§4.1）。
 9. `contextTokens` / `maxContextTokens` **不进渲染行**（宿主 footer 第 2 行原生已显示，SPEC §3.4）。
