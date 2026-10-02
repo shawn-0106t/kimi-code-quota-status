@@ -547,18 +547,39 @@ mod tests {
 
     /// json 解析失败即段整体省略（决策 E 严格语义，SPEC §7.7/§9）：坏文件
     /// 存在时不得保留其余任务的部分计数——返回零计数（徽章整段省略）。
+    /// 文件名 a_good/z_bad 使可计任务按 NTFS 名称序先于坏文件被计数，
+    /// 确定性钉死「短路时丢弃已积累计数」（非依赖坏文件先枚举的巧合）。
     #[test]
     fn malformed_json_omits_segment() {
         let home = temp_home("badjson");
-        write_task(&home, "wd_a", "s", "main", "bad", "not-json{{{");
         write_task(
             &home,
             "wd_a",
             "s",
             "main",
-            "good",
+            "a_good",
             &task_json("running", "agent", None),
         );
+        write_task(&home, "wd_a", "s", "main", "z_bad", "not-json{{{");
+        assert_eq!(count_running(&home, Some("s")), TaskCounts::default());
+        fs::remove_dir_all(&home).ok();
+    }
+
+    /// 跨 agent 传播（决策 E，三次 review Minor-1 补）：agent A 任务全部
+    /// 可计、agent B 有坏文件 → 仍段整体省略（已积累计数不得保留）。
+    /// 目录名 aaa_main/zzz_sub 按 NTFS 名称序保证 A 先计数。
+    #[test]
+    fn malformed_json_omits_segment_across_agents() {
+        let home = temp_home("badjson-xagent");
+        write_task(
+            &home,
+            "wd_a",
+            "s",
+            "aaa_main",
+            "t",
+            &task_json("running", "agent", None),
+        );
+        write_task(&home, "wd_a", "s", "zzz_sub", "t", "not-json{{{");
         assert_eq!(count_running(&home, Some("s")), TaskCounts::default());
         fs::remove_dir_all(&home).ok();
     }

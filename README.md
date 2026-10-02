@@ -90,7 +90,7 @@ http_timeout_seconds = 8
 
 ```bash
 cargo build --release          # 产物 target/release/quota-status.exe（静态 CRT，无 runtime 依赖）
-cargo test                     # 67 单元测试
+cargo test                     # 68 单元测试
 cargo test --test golden       # golden parity（33 个 golden 逐字节对齐）
 ```
 
@@ -130,7 +130,7 @@ golden 输入 payload 与期望值复刻自 `repos/kimi-planbar-tui`（只读参
 | 终态跳过 | `status:"completed"` 任务不产生徽章 |
 | agent 侧 | `kind:"agent"` running 无 pid → `[1 agent running]`（running 即计入）；与 bash 并存 → `[1 task running] [1 agent running]` 单空格连接 |
 | 单色组合 | `colors = false` 时徽章随单色路径输出纯文本、无任何 SGR |
-| 门禁 | fmt / clippy `-D warnings` / 66 单元测试 / 33 golden parity / release 构建 1,800,704 字节全绿；独立 code-reviewer 证伪复核结论"可交付"（0 Critical/0 Major，2 Minor 加固已落地） |
+| 门禁 | fmt / clippy `-D warnings` / 66 单元测试（首轮 review 时点，修复轮后 68）/ 33 golden parity / release 构建 1,800,704 字节全绿；独立 code-reviewer 证伪复核结论"可交付"（0 Critical/0 Major，2 Minor 加固已落地） |
 | 热路径计时 | 真实负载（1 workspace + 1 任务）30 次均值与无扫描基线持平（81 vs 82 ms，Git Bash 管道含进程启动，增量 ≈0）；人工病态构造（64 workspace 探测 + 32 任务 json + 32 次 pid 校验打满）增量 ≈18ms，超 §4.1 的 10ms 进程内预算——真实会话不可达该形态且距宿主 300ms 硬超时余量 >5 倍；按 PLAN P7 风险节约定，收紧 64/32 上限属 SPEC §7.7 决策 D 契约数值，留待决策未单方面修改（2026-10-02 晚用户定案：维持现状） |
 | 真机 TUI 验收（PLAN 标准 5，2026-10-02 晚） | 二次 review 的后台独立进程（`kimi -p`，带 pid 的 bash 任务）运行期间 footer 第 1 行出现 `[1 task running]`（用户配置 colors=false，纯文本色），进程结束后随重渲染消失——**P7 验收标准 1–5 全部通过** |
 | 二次独立 code review（k3-256k/max，2026-10-02 晚） | **Request Changes**：1 Major（M-1：任务文件读取/解析失败被实现为「跳过该文件保留部分计数」，与 SPEC §7.7 决策 E/§9 的段整体省略相悖，且单测断言方向写反）——经用户仲裁**修代码对齐契约**（短路返回零计数 + 断言反转 + 空态豁免单测，修复后 67 单测全绿）；3 Minor 中文档类已同步（SPEC/PLAN v1.5.1），其余 Minor/Nit 为有意保留（明细见 docs/HANDOFF.md §7 附记） |
