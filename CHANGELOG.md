@@ -18,7 +18,7 @@
 
 ### 文档
 
-- SPEC v1.5.1：§7.7 决策 B 补记 sessionId 字符白名单语义（实现自 P7 review 加固起即如此，文本同步无行为变更）、决策 E 补记 NotFound 空态豁免、§10.1 补失败语义与空态两单测项；PLAN v1.5.1：P7「涉及文件」补录 src/lib.rs、src/main.rs；HANDOFF §2 单测拆分勘误（13/5）+ §7 附记（二次 review 经过与验收标准 5 通过）
+- SPEC v1.5.1：§7.7 决策 B 补记 sessionId 字符白名单语义（实现自 P7 review 加固起即如此，文本同步无行为变更）、决策 E 补记 NotFound 空态豁免、§10.1 补失败语义与空态两单测项；PLAN v1.5.1：P7「涉及文件」补录 src/lib.rs、src/main.rs；HANDOFF §2 单测拆分勘误（13/5）+ §7 附记（二次 review 经过与验收标准 5 通过）；三次 review Nit 收尾：SPEC 决策 E 补 flatten 条目级错误豁免、PLAN 契约依据 bump v1.5.1、README 门禁行标注首轮时点
 
 ## [1.0.0] - 2026-10-01
 

@@ -77,7 +77,7 @@
 
 ```bash
 cargo fmt --check && cargo clippy --all-targets -- -D warnings
-cargo test                    # 66 单元测试
+cargo test                    # 68 单元测试（P7 修复轮后）
 cargo test --test golden      # 33 golden（须 UTC+08:00 机器）
 cargo build --release         # ≤5MB 单 exe
 cp target/release/quota-status.exe ~/.kimi-code/bin/   # 重新部署（勿忘）
@@ -95,3 +95,5 @@ cp target/release/quota-status.exe ~/.kimi-code/bin/   # 重新部署（勿忘�
 - **决策点 A**：用户定案维持现状（64/32 上限不变；真实负载增量 ≈0，18ms 病态形态现实不可达）。
 - **决策点 B 已修**：PLAN P7 涉及文件补录 lib.rs/main.rs；本文 §2 拆分计数勘误（13/5）；SPEC v1.5.1 补记决策 B 白名单语义（Minor-2）与决策 E NotFound 空态豁免、§10.1 补两单测项；exit code 259 盲区注释（Nit 4）。
 - **有意保留不变**：m-1（探测预算不含非目录枚举维度）、m-3（agent 目录枚举无预算，契约未要求）、n-3（NTFS 枚举序依赖）、n-5（§4.1 预算张力，随决策点 A 定案关闭）。
+- **三次 review（Agent 工具 code-reviewer，默认模型）**：结论**可交付**（0 Critical/0 Major/1 Minor/3 Nit）；Minor-1（malformed 测试确定性缺口——坏文件按名称序先枚举，短路时计数尚为零，回归"短路但保留部分计数"会假绿）已修：好/坏文件改名 `a_good`/`z_bad` + 新增跨 agent 省略用例（commit `7f9af3e`，单测 67→68）；3 Nit（README 首轮时点标注、PLAN 契约依据 bump、SPEC 决策 E flatten 豁免）同 commit 收尾。
+- **发布 v1.1.0**（commit `178b95f` + tag）：CI（master）与 Release workflow 双绿，Release 自动挂载 exe + sha256；tag↔version 一致性校验通过。部署版 exe 同步更新。
