@@ -1,8 +1,8 @@
 # quota-status 契约文档（SPEC）
 
 - 项目：quota-status —— Rust 实现的 Kimi Code CLI statusline 额度显示器（单二进制 `quota-status.exe`）
-- 版本：v1.3.2（2026-10-01；§11 补录 CI/Release 工程化设施与 CHANGELOG 约定）
-- 版本历史：v1.3.1（2026-10-01；golden 测试数据内化本仓库 `testdata/golden/`，CI 自足，§10.2 同步）；v1.3（2026-10-01；第三轮独立 code review 后修订：§4.1 新鲜判定钉死为纯 mtime 语义、§5.1 错误归类按 send/body 阶段细分、§9 缓存损坏行同步表述）；v1.2（2026-10-01；P0–P5 实现落定后修订）；v1.1（2026-10-01；按第二轮复核 REVIEW.md 的 8 项发现修订 F1–F8）；v1.0
+- 版本：v1.4（2026-10-02；追加单色渲染开关：§7.2 colors=false 单色语义、§7.4 分隔符纯字符形态、§8 [render] colors 键、§10.1 单测项）
+- 版本历史：v1.3.2（2026-10-01；§11 补录 CI/Release 工程化设施与 CHANGELOG 约定）；v1.3.1（2026-10-01；golden 测试数据内化本仓库 `testdata/golden/`，CI 自足，§10.2 同步）；v1.3（2026-10-01；第三轮独立 code review 后修订：§4.1 新鲜判定钉死为纯 mtime 语义、§5.1 错误归类按 send/body 阶段细分、§9 缓存损坏行同步表述）；v1.2（2026-10-01；P0–P5 实现落定后修订）；v1.1（2026-10-01；按第二轮复核 REVIEW.md 的 8 项发现修订 F1–F8）；v1.0
 - 本文档与已定决策清单冲突时，以决策清单为准（本文已按决策清单如实收录；两处事实勘误见 §2.3）
 - 路径约定：所有 `path:line` 引用相对本仓库根（即本文件所在 `docs/` 目录的上一级）
 
@@ -105,7 +105,7 @@ command = "C:\\tools\\quota-status.exe"
 
 ### 3.4 footer 两行行为
 
-- **第 1 行**：statusline command 的 stdout 首行**整体接管**（footer.ts:311-318），宿主再包一层主题前景色 `chalk.hex(colors.text)(customLine)`（footer.ts:318）——我们输出的内嵌 ANSI SGR 序列依旧按序生效，不受影响。
+- **第 1 行**：statusline command 的 stdout 首行**整体接管**（`apps/kimi-code/src/tui/components/chrome/footer.ts:311-318`），宿主再包一层主题前景色 `chalk.hex(colors.text)(customLine)`（footer.ts:318）——我们输出的内嵌 ANSI SGR 序列依旧按序生效，不受影响。
 - **第 2 行**：原生渲染，不可定制。command 接管第 1 行时：左侧为 ctrl+o 提示（transient/warning 提示出现时优先占据左侧，footer.ts:374-384、386-394），右侧为 `context: N% (缩写tokens/缩写max)`——tokens 按 1024 进制缩写（footer.ts:177-183 `formatContextStatus` + `formatTokenCount`）；原生布局（无 command）时左侧为空。
 - 因此 `contextTokens` / `maxContextTokens` **明确不进本工具渲染行**——footer 第 2 行原生已显示。
 - 两行最终都经 `truncateToWidth` 截到终端宽（footer.ts:397）——这是宿主侧兜底截断；我们应在输出前自行降级（§7.5），避免被宿主硬截。
@@ -273,6 +273,8 @@ thinking 阶梯（不在 stdin 快照里；语义同 quota-status.py:101-119）�
 
 依据：quota-status.py:21（阈值 85/60）、:195（permissionMode 色表）、:202（model cyan）、:111/:119（thinking 色）、:222（git magenta）。阈值边界：60 起黄、85 起红（`>= 85`、`>= 60`，quota-status.py:21）。每段以 `\033[0m` 结束重置。permissionMode 显示原值字符串。
 
+**单色开关（v1.4）**：`[render] colors = false` 时输出**纯文本、不含任何 SGR 序列**（分隔符与每段重置码一并省略）——宿主对 command 输出整行包一层主题前景色（`chalk.hex(colors.text)`，footer.ts:318），因此整行自动呈现为主题 text 色，与第 2 行 context 读数同色，并随 `/theme` 切换联动。此语义下本节色表与 §7.4 的 SGR 码全部停用，分隔符为纯字符 ` | ` / ` · `，可见宽度 = 字符数。注意不存在干净的"部分上色"中间态：段内 `\x1b[0m` 为全属性重置，重置后的文本落回终端默认色而非主题色。
+
 ### 7.3 额度段与 reset 时间格式
 
 - 段内格式：`{label} {percent:.0}%{reset}`，label 为 `5h` / `week` / `month`；percent 按 `%.0f` 语义取整（**round-half-to-even**：60.5→60、61.5→62，非四舍五入；边界由单测钉死）。
@@ -281,7 +283,7 @@ thinking 阶梯（不在 stdin 快照里；语义同 quota-status.py:101-119）�
 
 ### 7.4 行拼接
 
-- 段间：`" \033[90m|\033[0m "`（空格 + 灰色竖线 + 空格，quota-status.py:224）。
+- 段间与组内分隔符：段间为 `" \033[90m|\033[0m "`（空格 + 灰色竖线 + 空格，quota-status.py:224），组内为 `" \033[90m·\033[0m "`；`colors = false`（§7.2 单色开关）时分别为纯字符 `" | "` 与 `" · "`。
 - 整行 = 存活段按配置顺序 join；输出一行 + `\n`，exit 0。
 - 可见宽度计算排除 ANSI 转义序列；宽度按字符数近似可接受（字段以 ASCII 为主），最终由宿主 `truncateToWidth` 兜底（footer.ts:397）。
 
@@ -311,6 +313,9 @@ thinking 阶梯（不在 stdin 快照里；语义同 quota-status.py:101-119）�
 [render]
 # 行内字段顺序（可删减、可重排；未列出的字段不显示）
 order = ["permission_mode", "model", "thinking", "quota", "git_branch"]
+# 单色开关：false 时输出纯文本（无任何 SGR），整行由宿主包装为主题 text 色
+#（与第 2 行 context 同色，随 /theme 联动）；默认 true 保持多彩配色
+colors = true
 
 [render.quota]
 # 额度组内子段开关
@@ -363,7 +368,7 @@ http_timeout_seconds = 8                      # 默认 8s
 
 - 解析防御规则 §6 每条至少一个 case，以 quota.rs:243-374 与 `repos/kimi-planbar-tui/go/internal/core/quota_test.go` 为蓝本（字符串/数字混排、除零、`isEnabled=false`、单位四舍五入、`i64::MIN` 敌意值、reset 阶梯）。
 - 凭证链：credentials.rs:115-147 的两个既有单测函数原样移植（覆盖紧凑/带空格节名、节结算、空 api_key 拒绝场景）。
-- 本工具新增：thinking 阶梯（enabled=false / effort / models 回退）、颜色阈值边界（59.x/60/84.x/85）、reset 跨天格式、宽度降级阶梯、UTF-8 lossy、mtime 回拨计算（`now-TTL+30`）、月段有/无 limit。
+- 本工具新增：thinking 阶梯（enabled=false / effort / models 回退）、颜色阈值边界（59.x/60/84.x/85）、reset 跨天格式、宽度降级阶梯、UTF-8 lossy、mtime 回拨计算（`now-TTL+30`）、月段有/无 limit、colors 单色开关两态（false 时输出不含任何 SGR 且可见内容与彩色版一致）。
 
 ### 10.2 golden parity（30 case 对齐）
 

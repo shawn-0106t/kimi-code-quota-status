@@ -110,11 +110,6 @@ fn permission_mode_color(mode: &str) -> &'static str {
     }
 }
 
-/// 单段渲染：`\033[{color}m{text}\033[0m`
-fn span(color: &str, text: &str) -> String {
-    format!("\x1b[{color}m{text}{RESET}")
-}
-
 /// percent 按整行格式化（%.0f = round-half-to-even，SPEC §7.3）
 fn fmt_percent(p: f64) -> String {
     format!("{p:.0}")
@@ -181,6 +176,19 @@ fn render_variant(
     opts: &VariantOpts,
 ) -> String {
     let mut segs: Vec<String> = Vec::new();
+    // 单色开关（SPEC §7.2 v1.4）：colors=false 时输出纯文本（无任何 SGR），
+    // 宿主 footer.ts:318 的 chalk.hex(colors.text) 包装把整行染为主题 text 色
+    //（与第 2 行 context 同色，随 /theme 联动）；分隔符为纯字符
+    let colors_on = cfg.colors;
+    let span = |color: &str, text: &str| {
+        if colors_on {
+            format!("\x1b[{color}m{text}{RESET}")
+        } else {
+            text.to_string()
+        }
+    };
+    let sep_seg = if colors_on { SEP_SEG } else { " | " };
+    let sep_part = if colors_on { SEP_PART } else { " · " };
     // 按配置 order 迭代（重排生效）；quota_only 只处理额度组；
     // 降级丢 gitBranch 只删不重排
     for field in &cfg.order {
@@ -236,7 +244,7 @@ fn render_variant(
                     parts.push(span(CYAN, &format!("boost {yuan:.2}")));
                 }
                 if !parts.is_empty() {
-                    segs.push(parts.join(SEP_PART));
+                    segs.push(parts.join(sep_part));
                 }
             }
             Field::GitBranch if opts.git => {
@@ -249,7 +257,7 @@ fn render_variant(
             Field::GitBranch => {}
         }
     }
-    segs.join(SEP_SEG)
+    segs.join(sep_seg)
 }
 
 /// 可见宽度：剔除 ANSI 转义序列后按字符数近似（SPEC §7.4；
@@ -645,6 +653,85 @@ default_effort = "low"
         );
         assert!(!line.contains("5h"), "error 缓存不渲染额度组");
         assert!(line.contains("\x1b[31myolo"), "其余字段照常");
+    }
+
+    /// colors=false 单色渲染（SPEC §7.2 v1.4）：输出不含任何 SGR，可见内容
+    /// （段文本、顺序、reset 后缀、纯字符分隔符）与彩色版一致；降级阶梯照常。
+    #[test]
+    fn monochrome_strips_all_sgr() {
+        let cfg = Config {
+            colors: false,
+            ..Config::default()
+        };
+        let c = cached_full();
+        let line = render_line(
+            &payload_full(),
+            Some(&c),
+            &cfg,
+            Some(&Thinking::Effort("high".into())),
+            400,
+            now(),
+        );
+        assert!(!line.contains('\x1b'), "单色输出不得含 SGR: {line:?}");
+        for piece in [
+            "yolo",
+            "Kimi",
+            "high",
+            "5h 21%",
+            "(rst",
+            "week 68%",
+            "month 43%",
+            "main",
+        ] {
+            assert!(line.contains(piece), "缺 {piece}: {line:?}");
+        }
+        assert!(line.contains(" | "), "纯字符段间分隔: {line:?}");
+        assert!(line.contains(" · "), "纯字符组内分隔: {line:?}");
+        // 单色 × 降级阶梯组合（PLAN P6）：width=30 时降级到"只留额度组"（无
+        // reset 后缀，visible 宽恰 29），输出仍须零 SGR
+        let degraded = render_line(
+            &payload_full(),
+            Some(&c),
+            &cfg,
+            Some(&Thinking::Effort("high".into())),
+            30,
+            now(),
+        );
+        assert!(!degraded.contains('\x1b'), "降级后仍须单色: {degraded:?}");
+        assert!(
+            !degraded.contains("main") && !degraded.contains("(rst"),
+            "已降级丢 git/reset"
+        );
+        assert!(degraded.starts_with("5h 21%"), "只留额度组: {degraded:?}");
+        // 与彩色版逐字符可比（彩色版 = 单色版 + ANSI 包装）
+        let color_cfg = Config {
+            colors: true,
+            ..Config::default()
+        };
+        let colored = render_line(
+            &payload_full(),
+            Some(&c),
+            &color_cfg,
+            Some(&Thinking::Effort("high".into())),
+            400,
+            now(),
+        );
+        let mut plain = String::new();
+        let mut chars = colored.chars().peekable();
+        while let Some(ch) = chars.next() {
+            if ch == '\x1b' && chars.peek() == Some(&'[') {
+                chars.next();
+                while let Some(&c2) = chars.peek() {
+                    chars.next();
+                    if c2 == 'm' {
+                        break;
+                    }
+                }
+            } else {
+                plain.push(ch);
+            }
+        }
+        assert_eq!(line, plain, "单色版可见内容须与彩色版一致");
     }
 
     /// visible_width 剔除 ANSI 后按字符数计。

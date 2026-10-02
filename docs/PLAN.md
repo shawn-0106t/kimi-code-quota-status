@@ -1,9 +1,9 @@
 # quota-status 实现计划（PLAN）
 
-- 版本：v1.3（2026-10-01；同步 SPEC v1.3——纯 mtime 新鲜判定与 send/body 阶段错误归类细分）
-- 版本历史：v1.2（2026-10-01；同步 SPEC v1.2——P5 体积验收区间改为 ≤5MB）；v1.1（2026-10-01；同步 SPEC v1.1 修订）
+- 版本：v1.4（2026-10-02；追加 P6 单色渲染开关迭代，同步 SPEC v1.4）
+- 版本历史：v1.3（2026-10-01；同步 SPEC v1.3——纯 mtime 新鲜判定与 send/body 阶段错误归类细分）；v1.2（2026-10-01；同步 SPEC v1.2——P5 体积验收区间改为 ≤5MB）；v1.1（2026-10-01；同步 SPEC v1.1 修订）
 - **完成状态：P0–P5 已于 2026-10-01 全部实现并通过阶段验收**；2026-10-01 第三轮独立 code review 发现 2 Major + 3 Minor 已全部修复并通过复核（结论"可交付"，报告见 `docs/REVIEW3.md`）。逐项验收数据、体积偏差说明与待真机确认项见 README「验收记录」；下文任务清单与验收标准保留撰写时原貌，不作勾选回填。**注意**：P2 任务清单中「缓存损坏（JSON 非法）→ 锚定 + 回拨 + 派生」一条按 SPEC v1.3 §4.1/§9 的纯 mtime 语义执行（损坏但新鲜不派生），冲突时以 SPEC 为准。
-- 契约依据：`docs/SPEC.md` v1.3（唯一事实来源；本计划一切行为要求以 SPEC 条目为准，冲突时以 SPEC 为准）
+- 契约依据：`docs/SPEC.md` v1.4（唯一事实来源；本计划一切行为要求以 SPEC 条目为准，冲突时以 SPEC 为准）
 - 路径约定：相对本仓库根；`<kimi_home>` = `~/.kimi-code`（受 env `KIMI_CODE_HOME` 覆盖，SPEC §5.2）
 - 工程布局决策（SPEC 未规定，本计划定为如下，可调整）：cargo 工程 = 本仓库根，即 `Cargo.toml`、`.cargo/config.toml`、`src/*.rs`、`tests/golden.rs`、`testdata/golden/`（本项目新增 golden 用，绝不回写 `repos/` 下参考仓库）
 - 参考资产路径勘误：golden 矩阵实际位于 `repos/kimi-planbar-tui/go/testdata/golden/`（30 个 `quota-*.txt`，本计划撰写时已 `ls | grep -c` 核实为 30）；`repos/kimi-planbar/go/testdata/golden/` 不存在（SPEC §2.3 勘误 1）
@@ -18,6 +18,7 @@
 | P3 | 渲染与字段配置 | render / config 模块 + quota-bar.toml + 宽度降级 + UTF-8 | P0, P2 |
 | P4 | 测试与 golden parity | 30 case 逐字节对齐 + month 新 case + `--test-fetch` | P1, P3 |
 | P5 | 构建交付与安装文档 | 体积/性能达标 exe + README 安装文档 + 真机验收 | P0–P4 全部 |
+| P6 | 单色渲染开关（2026-10-02 追加） | `[render] colors` 键 + 单色渲染路径 + 单测 + 重新部署 | P5 |
 
 ---
 
@@ -252,6 +253,33 @@
 - **风险：体积超 5MB**。回退阶梯（SPEC §11）：先换 HTTP/TLS 后端或裁 feature（如 rustls 精简 cipher suite）→ 再评估 `opt-level = "z"` → 仍超则回报决策放宽预算（需用户确认，属 SPEC 变更）
 - **风险：端到端耗时偶发超 50ms**（Windows 进程启动抖动、防病毒扫描首启）。缓解：预热后测量取均值；确认无重 IO（渲染只读 3 个小文件 + 1 次宽度查询，SPEC §4.1）；防病毒排除项写入 README 建议
 - **风险：真机验收 3/4 依赖真实账号与网络**，环境不可控。处置：验收记录注明执行日期与环境；断网自愈用 `base_url` 指向不可达地址等价模拟，恢复即改回
+
+---
+
+## P6 追加迭代：单色渲染开关（2026-10-02）
+
+### 目标
+
+实现 SPEC v1.4 §7.2 单色语义：`quota-bar.toml [render] colors = false` 时渲染输出纯文本（不含任何 SGR），宿主的 `chalk.hex(colors.text)` 包装（footer.ts:318）使整行与第 2 行 context 读数同色，并随 `/theme` 联动。用户决策：statusline 采用"全素"形态。
+
+### 任务清单
+
+- [ ] `src/config.rs`：Config 增加 `colors: bool`（默认 true）；解析 `[render] colors`，非法类型落默认；单测（缺省 true / 显式 false / 非 bool 落默认）
+- [ ] `src/render.rs`：`render_variant` 内 span 与分隔符按 `cfg.colors` 分流——false 时输出裸文本、分隔符为纯字符 ` | ` / ` · `；单测（单色输出不含 `\x1b`、可见内容与彩色版一致、与降级阶梯组合正确）
+- [ ] 文档同步：SPEC v1.4（已完成）、README 配置示例补 `colors` 键、AGENTS.md 实现落定要点补一条
+- [ ] `cargo fmt --check` / `cargo clippy --all-targets -- -D warnings` / 全量测试 / release 构建后重新部署 `~/.kimi-code/bin/quota-status.exe`
+- [ ] CHANGELOG `[Unreleased]` 记录（下一个 release 时随版本号发布）
+
+### 验收标准
+
+1. `cargo test` 全绿（新增 config/render 单测通过），fmt/clippy 门禁零告警
+2. 可观察行为：`colors = false` 时 `echo payload | quota-status.exe | cat -v` 输出不含 `^[[` 序列，可见内容（段文本、顺序、reset 后缀、分隔符字符）与彩色版一致；删除该键回彩色
+3. 部署后真机 footer：额度行与 context 行同色（muted 主题下均为 `#CCC7BE`）
+
+### 风险与回退
+
+- 风险：单色模式下降级阶梯的宽度计算变化——纯文本无 SGR，`visible_width` 退化为字符数，只会更准，无风险
+- 回退：`colors` 默认 true，删配置键即回彩色版；代码回退 revert 本迭代提交即可
 
 ---
 

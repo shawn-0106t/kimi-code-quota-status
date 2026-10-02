@@ -37,6 +37,9 @@ pub struct QuotaFields {
 #[derive(Clone, Debug)]
 pub struct Config {
     pub order: Vec<Field>,
+    /// 单色开关（SPEC §7.2 v1.4）：false 时渲染输出纯文本（无任何 SGR），
+    /// 整行由宿主包装为主题 text 色（与第 2 行 context 同色，随 /theme 联动）
+    pub colors: bool,
     pub quota: QuotaFields,
     /// percent < green_below 绿；< yellow_below 黄；否则红
     pub green_below: f64,
@@ -58,6 +61,7 @@ impl Default for Config {
                 Field::Quota,
                 Field::GitBranch,
             ],
+            colors: true,
             quota: QuotaFields {
                 five_hour: true,
                 week: true,
@@ -93,6 +97,15 @@ pub fn parse(text: &str) -> Config {
             .filter_map(|v| v.as_str().and_then(parse_field))
             .filter(|f| seen.insert(*f))
             .collect();
+    }
+
+    // [render] colors：false 时单色渲染（SPEC §7.2 v1.4）；非 bool 落默认
+    if let Some(c) = val
+        .get("render")
+        .and_then(|r| r.get("colors"))
+        .and_then(as_bool)
+    {
+        cfg.colors = c;
     }
 
     // [render.quota] 五键
@@ -272,5 +285,16 @@ http_timeout_seconds = 5
     fn order_duplicates_deduped() {
         let cfg = parse("[render]\norder = [\"quota\", \"model\", \"quota\"]\n");
         assert_eq!(cfg.order, vec![Field::Quota, Field::Model]);
+    }
+
+    /// colors 单色开关（SPEC §7.2 v1.4）：默认 true；显式 false 生效；非 bool
+    /// 与缺失落默认。
+    #[test]
+    fn colors_switch_parsed() {
+        assert!(Config::default().colors);
+        assert!(parse("").colors);
+        assert!(!parse("[render]\ncolors = false\n").colors);
+        assert!(parse("[render]\ncolors = true\n").colors);
+        assert!(parse("[render]\ncolors = \"false\"\n").colors); // 非 bool 落默认
     }
 }

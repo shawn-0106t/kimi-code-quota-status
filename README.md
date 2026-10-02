@@ -43,6 +43,9 @@ Kimi Code CLI 的 statusline 额度显示器：静态单二进制 `quota-status.
 [render]
 # 行内字段顺序（可删减、可重排；未列出的字段不显示）
 order = ["permission_mode", "model", "thinking", "quota", "git_branch"]
+# 单色开关：false 时输出纯文本（无任何颜色码），整行由 Kimi Code 包装为主题
+# text 色——与第 2 行 context 读数同色，随 /theme 切换联动；默认 true 多彩
+colors = true
 
 [render.quota]
 five_hour  = true
