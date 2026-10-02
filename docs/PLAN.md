@@ -1,8 +1,8 @@
 # quota-status 实现计划（PLAN）
 
-- 版本：v1.5（2026-10-02；追加 P7 tasks/agents 徽章迭代，同步 SPEC v1.5。同日评审修订与仲裁落实：P7 任务清单/验收/风险按仲裁更新——决策 C 按 kind 分裂（agent 侧 running 即计入已仲裁、bash 侧维持 pid 校验并补 pid 类型防御）、fallback 不扫描定案并入、超扫描上限语义统一为截断非失败；补 P6 完成状态与里程碑链追加迭代段。二次仲裁：question 任务维持不计入定案，SPEC §13 关闭移除）
-- 版本历史：v1.4（2026-10-02；追加 P6 单色渲染开关迭代，同步 SPEC v1.4）；v1.3（2026-10-01；同步 SPEC v1.3——纯 mtime 新鲜判定与 send/body 阶段错误归类细分）；v1.2（2026-10-01；同步 SPEC v1.2——P5 体积验收区间改为 ≤5MB）；v1.1（2026-10-01；同步 SPEC v1.1 修订）
-- **完成状态：P0–P5 已于 2026-10-01 全部实现并通过阶段验收**；2026-10-01 第三轮独立 code review 发现 2 Major + 3 Minor 已全部修复并通过复核（结论"可交付"，报告见 `docs/REVIEW3.md`）。**P6 已于 2026-10-02 交付**（commit `e4ced6f`：config/render 实现 + 47 个单测 + SPEC/PLAN/README/AGENTS/CHANGELOG 同步，独立 code-reviewer 复核 v1.4 范围零发现；真机同色验收见 README/CHANGELOG 记录）。逐项验收数据、体积偏差说明与待真机确认项见 README「验收记录」；下文任务清单与验收标准保留撰写时原貌，不作勾选回填。**注意**：P2 任务清单中「缓存损坏（JSON 非法）→ 锚定 + 回拨 + 派生」一条按 SPEC v1.3 §4.1/§9 的纯 mtime 语义执行（损坏但新鲜不派生），冲突时以 SPEC 为准。
+- 版本：v1.5.1（2026-10-02；P7「涉及文件」勘误补录 src/lib.rs 与 src/main.rs——二次独立 code review Nit；同步 SPEC v1.5.1）
+- 版本历史：v1.5（2026-10-02；追加 P7 tasks/agents 徽章迭代，同步 SPEC v1.5，含两轮仲裁定案）；v1.4（2026-10-02；追加 P6 单色渲染开关迭代，同步 SPEC v1.4）；v1.3（2026-10-01；同步 SPEC v1.3——纯 mtime 新鲜判定与 send/body 阶段错误归类细分）；v1.2（2026-10-01；同步 SPEC v1.2——P5 体积验收区间改为 ≤5MB）；v1.1（2026-10-01；同步 SPEC v1.1 修订）
+- **完成状态：P0–P5 已于 2026-10-01 全部实现并通过阶段验收**；2026-10-01 第三轮独立 code review 发现 2 Major + 3 Minor 已全部修复并通过复核（结论"可交付"，报告见 `docs/REVIEW3.md`）。**P6 已于 2026-10-02 交付**（commit `e4ced6f`：config/render 实现 + 47 个单测 + SPEC/PLAN/README/AGENTS/CHANGELOG 同步，独立 code-reviewer 复核 v1.4 范围零发现；真机同色验收见 README/CHANGELOG 记录）。**P7 已于 2026-10-02 交付**（commit `087c266` + 同日 M-1 修复轮：tasks/agents 徽章 + 文档同步；两轮独立 review——第二轮 k3-256k/max 证伪复核发现 1 Major（任务文件失败语义与 SPEC §7.7 决策 E/§9 相悖），经用户仲裁修代码对齐契约；PLAN P7 验收标准 1–5 全部通过，明细见 README「验收记录」与 `docs/HANDOFF.md` §7 附记）。逐项验收数据、体积偏差说明与待真机确认项见 README「验收记录」；下文任务清单与验收标准保留撰写时原貌，不作勾选回填。**注意**：P2 任务清单中「缓存损坏（JSON 非法）→ 锚定 + 回拨 + 派生」一条按 SPEC v1.3 §4.1/§9 的纯 mtime 语义执行（损坏但新鲜不派生），冲突时以 SPEC 为准。
 - 契约依据：`docs/SPEC.md` v1.5（唯一事实来源；本计划一切行为要求以 SPEC 条目为准，冲突时以 SPEC 为准）
 - 路径约定：相对本仓库根；`<kimi_home>` = `~/.kimi-code`（受 env `KIMI_CODE_HOME` 覆盖，SPEC §5.2）
 - 工程布局决策（SPEC 未规定，本计划定为如下，可调整）：cargo 工程 = 本仓库根，即 `Cargo.toml`、`.cargo/config.toml`、`src/*.rs`、`tests/golden.rs`、`testdata/golden/`（本项目新增 golden 用，绝不回写 `repos/` 下参考仓库）
@@ -309,7 +309,7 @@
 ### 涉及文件
 
 - 新建：`src/tasks.rs`（workspace 探测 + 计数 + pid 校验，纯逻辑 + 单测）
-- 修改：`src/config.rs`（`Field::Tasks` + `parse_field` + 默认 order）、`src/render.rs`（`render_line` 计数一次传入各降级变体 + `Field::Tasks` 渲染分支）
+- 修改：`src/config.rs`（`Field::Tasks` + `parse_field` + 默认 order）、`src/render.rs`（`render_line` 计数一次传入各降级变体 + `Field::Tasks` 渲染分支）、`src/lib.rs`（挂 `pub mod tasks;`）、`src/main.rs`（`render_line` 调用点传入 `credentials::kimi_home()`）（后两项为 v1.5.1 勘误补录，二次 review Nit）
 - 只读参考：`repos/kimi-code/` 的 `apps/kimi-code/src/tui/components/chrome/footer.ts`（徽章格式）、`apps/kimi-code/src/tui/controllers/session-event-handler.ts`（计数口径）、`packages/agent-core-v2/src/agent/task/persist.ts`/`types.ts`/`taskService.ts`（持久化布局与字段，含 kind=question 变体与创建链 `agent/tools/ask-user-question/`）、`packages/agent-core-v2/src/_base/utils/workdir-slug.ts`（背景注记，不实现）——宿主事实已录 SPEC §7.7
 
 ### 验收标准

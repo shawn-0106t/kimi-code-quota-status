@@ -90,8 +90,12 @@ fn count_in_session(session_dir: &Path) -> TaskCounts {
         if !agent_dir.is_dir() {
             continue;
         }
-        let Ok(tasks) = std::fs::read_dir(agent_dir.join("tasks")) else {
-            continue; // 该 agent 无 tasks 目录 -> 跳过
+        let tasks = match std::fs::read_dir(agent_dir.join("tasks")) {
+            Ok(t) => t,
+            // 该 agent 无 tasks 目录属空态（与顶层 sessions 缺失同义）-> 跳过；
+            // 其余 IO 错误属决策 E 失败 -> 短路零计数（段整体省略）
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(_) => return TaskCounts::default(),
         };
         for task in tasks.flatten() {
             if reads >= MAX_TASK_READS {
@@ -102,7 +106,11 @@ fn count_in_session(session_dir: &Path) -> TaskCounts {
                 continue;
             }
             reads += 1;
-            count_task_file(&path, &mut counts);
+            if count_task_file(&path, &mut counts).is_none() {
+                // 决策 E：任务文件读取/解析失败 -> 短路返回零计数（段整体省略），
+                // 不得保留已积累的部分计数（SPEC §7.7 决策 E / §9）
+                return TaskCounts::default();
+            }
         }
     }
     counts
@@ -119,35 +127,33 @@ fn is_task_json(path: &Path) -> bool {
 /// 单个任务 json 计数（SPEC §7.7 计数口径）：仅 `status == "running"` 参与
 /// 计数（五类终态与未知 status 跳过）；`kind == "agent"`（严格相等）running
 /// 即计入 agent 计数；其余一切 kind 走 pid 存活校验计入 bash 侧。
-fn count_task_file(path: &Path, counts: &mut TaskCounts) {
-    // 大小护栏：超大文件视为格式漂移跳过（防病态文件全量载入拖垮热路径）；
-    // metadata 失败按未超限处理（后续读取失败同样走跳过路径）
+/// 返回 None 表示文件读取/解析失败（决策 E：调用方短路整段省略）。
+fn count_task_file(path: &Path, counts: &mut TaskCounts) -> Option<()> {
+    // 大小护栏：超大文件视为格式漂移的刻意跳过（非失败），其余文件照常计数；
+    // metadata 失败按未超限处理（后续读取失败走决策 E 短路）
     if std::fs::metadata(path).is_ok_and(|m| m.len() > MAX_TASK_JSON_BYTES) {
-        return;
+        return Some(());
     }
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return; // 决策 E：读取失败跳过
-    };
-    let Ok(v) = serde_json::from_str::<Value>(&text) else {
-        return; // 决策 E：解析失败跳过
-    };
+    let text = std::fs::read_to_string(path).ok()?; // 决策 E：读取失败
+    let v = serde_json::from_str::<Value>(&text).ok()?; // 决策 E：解析失败
     if v.get("status").and_then(|s| s.as_str()) != Some("running") {
-        return;
+        return Some(());
     }
     if v.get("kind").and_then(|k| k.as_str()) == Some("agent") {
         // 决策 C：agent 任务无 pid 字段（CLI 进程内异步任务），running 即计入，
         // 接受 CLI 崩溃场景的陈旧误报（宿主重启加载会自愈标 lost）
         counts.agent += 1;
-        return;
+        return Some(());
     }
     // 其余 kind（process/question/未知/缺失）-> bash 侧经 pid 校验；
     // question 无 pid 恒不计入（2026-10-02 仲裁：保守不计入，宁少报勿误报）
     let Some(pid) = pid_of(&v) else {
-        return;
+        return Some(());
     };
     if process_alive(pid) {
         counts.bash += 1;
     }
+    Some(())
 }
 
 /// pid 防御（决策 C）：仅接受 JSON 正整数且 <= u32::MAX；缺失、字符串形态、
@@ -173,7 +179,9 @@ fn process_alive(pid: u32) -> bool {
         let ok = GetExitCodeProcess(handle, &mut exit_code);
         CloseHandle(handle);
         // exit code == STILL_ACTIVE(259) 才视为存活（决策 C；windows-sys 的
-        // STILL_ACTIVE 为 NTSTATUS = i32，GetExitCodeProcess 出参为 u32）
+        // STILL_ACTIVE 为 NTSTATUS = i32，GetExitCodeProcess 出参为 u32）。
+        // 已知盲区：退出码恰为 259 的已退出进程会误判存活（Win32 API 固有
+        // 限制，与 PID 复用窗口同类，概率可忽略）
         ok != 0 && exit_code == STILL_ACTIVE as u32
     }
 }
@@ -537,9 +545,10 @@ mod tests {
         fs::remove_dir_all(&home).ok();
     }
 
-    /// json 解析失败跳过（决策 E）：坏文件不阻断同目录其余任务的计数。
+    /// json 解析失败即段整体省略（决策 E 严格语义，SPEC §7.7/§9）：坏文件
+    /// 存在时不得保留其余任务的部分计数——返回零计数（徽章整段省略）。
     #[test]
-    fn malformed_json_skipped() {
+    fn malformed_json_omits_segment() {
         let home = temp_home("badjson");
         write_task(&home, "wd_a", "s", "main", "bad", "not-json{{{");
         write_task(
@@ -550,6 +559,25 @@ mod tests {
             "good",
             &task_json("running", "agent", None),
         );
+        assert_eq!(count_running(&home, Some("s")), TaskCounts::default());
+        fs::remove_dir_all(&home).ok();
+    }
+
+    /// agent 目录缺 tasks/ 子目录属空态（非失败，决策 E 的 NotFound 豁免）：
+    /// 不触发段省略，其余 agent 的计数照常。
+    #[test]
+    fn agent_without_tasks_dir_is_empty_state() {
+        let home = temp_home("notasks");
+        write_task(
+            &home,
+            "wd_a",
+            "s",
+            "main",
+            "t",
+            &task_json("running", "agent", None),
+        );
+        // 并列一个无 tasks/ 子目录的 agent（空态，枚举先后均不影响结果）
+        fs::create_dir_all(home.join("sessions/wd_a/s/agents/sub_x")).unwrap();
         assert_eq!(
             count_running(&home, Some("s")),
             TaskCounts { bash: 0, agent: 1 }

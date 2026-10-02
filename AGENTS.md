@@ -4,7 +4,7 @@
 
 目标产物 `quota-status.exe`：Rust 静态单二进制，作为 Kimi Code CLI 的 statusline command（`~/.kimi-code/tui.toml` `[status_line]`），在 footer 第 1 行显示 Kimi For Coding 套餐额度（5h/week/month + reset 时间）。渲染路径只读本地缓存，缓存过期（TTL 60s）时派生 detached 子进程拉取 `/usages` 回填。
 
-**当前阶段：P0–P5 实现 + 三轮 review + 实装验收全部完成**（2026-10-01）。第三轮独立 code review 发现 2 Major（console CONOUT$ 句柄 access=0 致宽度查询恒失效、缓存新鲜判定把「可解析」相与进来架空 §4.4 防风暴）+ 3 Minor，已全部修复并补回归单测（SPEC bump v1.3）。cargo 工程即仓库根，产物 `target/release/quota-status.exe` ≈1.7MB 静态单 exe。2026-10-01 晚实装完成：exe 部署至 `~/.kimi-code/bin/quota-status.exe`（脱离 target/，重新 build 后需重新复制），tui.toml `[status_line] command` 已配置并生效；真机验收 §10.4 条 3 通过（footer 第 1 行正常显示、活跃会话内缓存 fetchedAt 连续推进、CONOUT$ 宽度查询真机复核正常），条 6 本轮未触发（验收期间 host 未重写 tui.toml）。排查步骤见 README「故障排查」，验收明细见 README「验收记录」。2026-10-01 发布 v1.0.0（tag `v*` 触发 release workflow 自动挂 exe/sha256，含 tag↔version 一致性校验；CI 门禁含 fmt/clippy；master 已开 branch protection 要求 CI `test` job 绿）。
+**当前阶段：P0–P5 实现 + 三轮 review + 实装验收全部完成**（2026-10-01）。第三轮独立 code review 发现 2 Major（console CONOUT$ 句柄 access=0 致宽度查询恒失效、缓存新鲜判定把「可解析」相与进来架空 §4.4 防风暴）+ 3 Minor，已全部修复并补回归单测（SPEC bump v1.3）。cargo 工程即仓库根，产物 `target/release/quota-status.exe` ≈1.7MB 静态单 exe。2026-10-01 晚实装完成：exe 部署至 `~/.kimi-code/bin/quota-status.exe`（脱离 target/，重新 build 后需重新复制），tui.toml `[status_line] command` 已配置并生效；真机验收 §10.4 条 3 通过（footer 第 1 行正常显示、活跃会话内缓存 fetchedAt 连续推进、CONOUT$ 宽度查询真机复核正常），条 6 本轮未触发（验收期间 host 未重写 tui.toml）。排查步骤见 README「故障排查」，验收明细见 README「验收记录」。2026-10-01 发布 v1.0.0（tag `v*` 触发 release workflow 自动挂 exe/sha256，含 tag↔version 一致性校验；CI 门禁含 fmt/clippy；master 已开 branch protection 要求 CI `test` job 绿）。**P6（单色开关，SPEC v1.4）与 P7（tasks/agents 徽章，SPEC v1.5/v1.5.1）已于 2026-10-02 交付**：P7 经两轮独立 review——第二轮（k3-256k/max 证伪复核）发现 1 Major（任务文件失败语义与 SPEC §7.7 决策 E/§9 相悖、单测断言反向），经用户仲裁修代码对齐契约；PLAN P7 验收标准 1–5 全部通过（含真机 TUI 后台任务徽章出现/消失观察）。
 
 ## 实现落定要点（与参考实现/SPEC 旧文本的差异，均已过 review）
 
@@ -14,7 +14,7 @@
 - 缓存新鲜判定为**纯 mtime**（SPEC §4.1 步骤 3 v1.3 钉死，Python `maybe_refresh` 同款）：与缓存是否可解析无关，空锚定/损坏/refresh 持续失败时靠回拨 mtime 压住派生风暴；锚定用 `create_new` 原子语义（绝不截断已有缓存），refresh 启动时清理 >60s 的孤儿 tmp。
 - month 段：limit 缺失/0/NaN 均不产生段；booster 开启时显示 `boost 余额`（纯 ASCII，避免 ¥ 在非 UTF-8 终端的兼容性问题）。
 - 单色开关（v1.4，P6）：`quota-bar.toml [render] colors = false` 时渲染输出纯文本（无任何 SGR），整行由宿主包装为主题 text 色（与 context 行同色，随 /theme 联动）；默认 true 多彩。
-- tasks/agents 徽章（v1.5，P7）：`src/tasks.rs` 扫描 `<kimi_home>/sessions/` 探测 payload sessionId 定位会话目录（workspace 探测 ≤64、任务 json 读取 ≤32、单文件 ≤64KB，超限截断计数非失败），按 kind 分流计数——`kind=agent` running 即计入 agent 侧（无 pid 字段，接受崩溃遗留的陈旧误报，宿主重启加载标 lost 自愈）；其余一切 kind 须经 `OpenProcess` + `GetExitCodeProcess` pid 存活校验（pid 缺失/非正整数视同缺失不计入，question 恒不计入）。计数在 `render_line` 外层算一次传入 4 个降级变体；sessionId 校验为字符白名单 `[A-Za-z0-9_-]`（宿主真值 `session_<uuid>` 恒在其内；严格于 SPEC 三条拒绝规则，封堵盘符相对路径/裸 `.` 等残余穿越面，review Minor 加固）；任何失败零计数段省略；默认 order 补 `"tasks"`，删去即关闭整段并跳过扫描。
+- tasks/agents 徽章（v1.5，P7）：`src/tasks.rs` 扫描 `<kimi_home>/sessions/` 探测 payload sessionId 定位会话目录（workspace 探测 ≤64、任务 json 读取 ≤32、单文件 ≤64KB，超限截断计数非失败），按 kind 分流计数——`kind=agent` running 即计入 agent 侧（无 pid 字段，接受崩溃遗留的陈旧误报，宿主重启加载标 lost 自愈）；其余一切 kind 须经 `OpenProcess` + `GetExitCodeProcess` pid 存活校验（pid 缺失/非正整数视同缺失不计入，question 恒不计入）。计数在 `render_line` 外层算一次传入 4 个降级变体；sessionId 校验为字符白名单 `[A-Za-z0-9_-]`（宿主真值 `session_<uuid>` 恒在其内；SPEC v1.5.1 §7.7 决策 B 已收录——一步覆盖三条拒绝规则并封堵盘符相对路径/裸 `.` 等残余穿越面，P7 首轮 review Minor 加固）；失败语义（v1.5.1 钉死，二次 review Major 修复）：任务文件读取/解析失败短路返回零计数、段整体省略（不得保留部分计数），目录不存在属空态（`agents/<id>/tasks/` 缺失视同无任务跳过，其余 IO 错误仍短路省略）；默认 order 补 `"tasks"`，删去即关闭整段并跳过扫描。
 - 错误分类：超时（含 body 阶段）→ `TaskCanceledException`；非 2xx 与其余传输错误 → `HttpRequestException`；body 阶段非超时错误（连接 reset、非法 UTF-8）→ `JsonException`（SPEC §5.1 v1.3 钉死）。
 
 ## 权威文档（动手前必读）
@@ -42,7 +42,7 @@
 
 ## 验证与测试
 
-- 常用命令：`cargo build --release`（静态单 exe）；`cargo test`（66 个单元测试）；`cargo test --test golden`（33 个 golden 逐字节 parity——golden 的 datetime 偏移固定 +08:00，测试内有时区 fail-fast，须在 UTC+08:00 机器上跑）；自检：`target/release/quota-status.exe --test-fetch`（headless 不写缓存，`error == null` 即链路正常，无凭证输出 `"error": "no-token"`）。发版：打 tag `v*` 推送即触发 `.github/workflows/release.yml`（全量测试 + 构建 + 自动建 GitHub Release 挂 exe/sha256）。CI 门禁含 `cargo fmt --check` 与 `cargo clippy --all-targets -- -D warnings`（代码须先过这两关）。
+- 常用命令：`cargo build --release`（静态单 exe）；`cargo test`（67 个单元测试）；`cargo test --test golden`（33 个 golden 逐字节 parity——golden 的 datetime 偏移固定 +08:00，测试内有时区 fail-fast，须在 UTC+08:00 机器上跑）；自检：`target/release/quota-status.exe --test-fetch`（headless 不写缓存，`error == null` 即链路正常，无凭证输出 `"error": "no-token"`）。发版：打 tag `v*` 推送即触发 `.github/workflows/release.yml`（全量测试 + 构建 + 自动建 GitHub Release 挂 exe/sha256）。CI 门禁含 `cargo fmt --check` 与 `cargo clippy --all-targets -- -D warnings`（代码须先过这两关）。
 - golden parity：33 个 case 已全部内化 `testdata/golden/`（2026-10-01 从参考仓库逐字节复制 30 个既有 case，CI 自足；month 3 个原生），逐字节比对 + CRLF 归一化；参考仓库仍为上游事实来源，新增 case 绝不回写。
 - 真机验收六条见 SPEC §10.4；验收记录（含 2026-10-01 晚实装验收：footer 显示与活跃会话 1 分钟自动更新已通过、`/theme` 演练未触发）与偏差记录（体积 1.7MB 低于预估下限 3–5MB）见 README「验收记录」。
 

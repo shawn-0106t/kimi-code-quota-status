@@ -9,6 +9,14 @@
 - tasks/agents 徽章（SPEC v1.5 §7.7）：footer 第 1 行在额度组之前显示当前会话的后台任务计数——bash 后台任务 `[N task(s) running]`（cyan，经 `OpenProcess` + `GetExitCodeProcess` pid 存活校验）、后台 subagent `[M agent(s) running]`（running 即计入），两者皆零整段省略；数据源为 `<kimi_home>/sessions/` 扫描探测（workspace 探测 ≤64、任务 json 读取 ≤32，超限截断计数），sessionId 路径穿越防御 + 失败即省略，不阻塞渲染；默认 order 补入 `"tasks"`，从 order 删去即关闭整段并跳过扫描，不新增配置键
 - 单色渲染开关：`quota-bar.toml [render] colors = false` 时输出纯文本（无任何 SGR），整行由宿主包装为主题 text 色——与 footer 第 2 行 context 读数同色并随 `/theme` 联动（SPEC v1.4 §7.2/§7.4/§8）
 
+### 修复
+
+- tasks 徽章失败语义对齐契约（SPEC §7.7 决策 E / §9）：任务 json 读取/解析失败由「跳过该文件、保留部分计数」改为短路返回零计数（段整体省略），对应单测断言方向反转并补空态回归（二次独立 code review Major，经用户仲裁修代码对齐契约）；`agents/<id>/tasks/` 目录不存在按空态跳过（非失败），其余 IO 错误同样段整体省略
+
+### 文档
+
+- SPEC v1.5.1：§7.7 决策 B 补记 sessionId 字符白名单语义（实现自 P7 review 加固起即如此，文本同步无行为变更）、决策 E 补记 NotFound 空态豁免、§10.1 补失败语义与空态两单测项；PLAN v1.5.1：P7「涉及文件」补录 src/lib.rs、src/main.rs；HANDOFF §2 单测拆分勘误（13/5）+ §7 附记（二次 review 经过与验收标准 5 通过）
+
 ## [1.0.0] - 2026-10-01
 
 首个正式版。

@@ -7,15 +7,15 @@
 
 ## 1. 状态总览
 
-**P7 实现 + 测试 + 独立 code review + 部署 + 真机验收（PLAN P7 验收标准 2–4）已全部完成；变更尚未 commit（等用户明确说"提交"）。** 验收标准 5（真实 TUI 观察后台任务徽章）与两个决策点（扫描上限、PLAN 勘误）待用户。
+**P7 实现 + 测试 + 独立 code review + 部署 + 真机验收（PLAN P7 验收标准 2–4）已全部完成；变更已入库（commit `087c266`，2026-10-02 晚，含本文档）。** 验收标准 5 的最终结论、两个决策点的用户定案、二次独立 review（k3-256k/max）的 Major 发现与修复经过见文末 §7 附记。
 
 ## 2. 变更清单（当前工作区，`git status` 一致，未提交）
 
 | 文件 | 变更 |
 |---|---|
-| `src/tasks.rs` | **新建**。扫描计数入口 `count_running(kimi_home, session_id)` + pid 存活校验（`OpenProcess`/`GetExitCodeProcess`）+ 12 个单测 |
+| `src/tasks.rs` | **新建**。扫描计数入口 `count_running(kimi_home, session_id)` + pid 存活校验（`OpenProcess`/`GetExitCodeProcess`）+ 13 个单测（v1.5.1 勘误：本文初版误记 12） |
 | `src/config.rs` | `Field::Tasks` 变体、`parse_field` 认识 `"tasks"`、默认 order 插入 `"tasks"`（thinking 与 quota 之间）+ 1 个单测 |
-| `src/render.rs` | `render_variant` 增加 `TaskCounts` 参数与 `Field::Tasks` 分支；`render_line` 新增 `kimi_home: Option<&Path>` 参数，计数在外层执行**一次**传入 4 个降级变体；order 不含 tasks 跳过扫描 + 6 个新单测 |
+| `src/render.rs` | `render_variant` 增加 `TaskCounts` 参数与 `Field::Tasks` 分支；`render_line` 新增 `kimi_home: Option<&Path>` 参数，计数在外层执行**一次**传入 4 个降级变体；order 不含 tasks 跳过扫描 + 5 个新单测（v1.5.1 勘误：本文初版误记 6） |
 | `src/main.rs` | `render_line` 调用点传入 `credentials::kimi_home().as_deref()` |
 | `src/lib.rs` | 挂 `pub mod tasks;` |
 | `README.md` | 简介补徽章、配置示例 order 补 `"tasks"`、徽章说明段、单元测试计数 66、新增「P7 验收记录」表 |
@@ -82,3 +82,16 @@ cargo test --test golden      # 33 golden（须 UTC+08:00 机器）
 cargo build --release         # ≤5MB 单 exe
 cp target/release/quota-status.exe ~/.kimi-code/bin/   # 重新部署（勿忘）
 ```
+
+
+---
+
+## 7. 附记（2026-10-02 晚，二次独立 review 后）
+
+- **入库**：全部变更（含本文档）已随 commit `087c266` 入库（gitleaks 通过）。
+- **验收标准 5 通过**：借二次 review 的后台独立进程（`kimi -p`，带 pid 的 bash 任务）观察真实 TUI——footer 第 1 行出现 `[1 task running]`（用户配置 colors=false，纯文本色），进程结束后随重渲染消失。P7 五条验收标准至此全部通过。
+- **二次独立 code review（k3-256k/max，证伪导向）**：结论 Request Changes——1 Major + 3 Minor + 5 Nit；工程门禁（fmt/clippy/单测/golden/release 体积/零新增依赖）实跑全绿。
+- **M-1（Major）**：任务文件读取/解析失败被实现为「跳过该文件、保留部分计数」，与 SPEC §7.7 决策 E / §9 的「段整体省略」相悖，且 `malformed_json_skipped` 断言方向写反。用户仲裁：**修代码对齐契约**——`count_task_file` 改返回 `Option<()>`，失败时 `count_in_session` 短路返回零计数；`read_dir(tasks)` 的 NotFound 按空态跳过（其余 IO 错误短路省略）；`malformed_json_omits_segment` 断言反转 + 新增 `agent_without_tasks_dir_is_empty_state`（单测 66→67）。
+- **决策点 A**：用户定案维持现状（64/32 上限不变；真实负载增量 ≈0，18ms 病态形态现实不可达）。
+- **决策点 B 已修**：PLAN P7 涉及文件补录 lib.rs/main.rs；本文 §2 拆分计数勘误（13/5）；SPEC v1.5.1 补记决策 B 白名单语义（Minor-2）与决策 E NotFound 空态豁免、§10.1 补两单测项；exit code 259 盲区注释（Nit 4）。
+- **有意保留不变**：m-1（探测预算不含非目录枚举维度）、m-3（agent 目录枚举无预算，契约未要求）、n-3（NTFS 枚举序依赖）、n-5（§4.1 预算张力，随决策点 A 定案关闭）。

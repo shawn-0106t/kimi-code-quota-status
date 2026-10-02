@@ -1,8 +1,8 @@
 # quota-status 契约文档（SPEC）
 
 - 项目：quota-status —— Rust 实现的 Kimi Code CLI statusline 额度显示器（单二进制 `quota-status.exe`）
-- 版本：v1.5（2026-10-02；追加 tasks/agents 徽章：§7.7 数据源与防御细则（新增小节）、§7.1 字段表与默认顺序、§7.2 色表、§8 默认 order 与开关说明、§3.5 sessionId 用途启用、§4.1 步骤 6 IO 预算放宽、§9 错误矩阵补一行、§10.1 单测项、§11 依赖白名单不变说明、§12 风险 ④⑤、§13 开放问题（新增小节）。同日评审修订与仲裁落实：§7.7 决策 C 按 kind 分裂——agent 侧 running 即计入（已仲裁放宽）、bash 侧维持 pid 校验并补 pid 类型防御；决策 B 并入 fallback 位置不扫描的定案；§9 将「超扫描上限」移出段省略触发条件（评审 Major 1，超限为截断非失败）；宿主事实块补第三种持久化 kind=question 与行号精修；§7.1/§10.1/§12/§13 连带更新。二次仲裁：question 任务维持保守不计入（定案），开放问题全部关闭、§13 小节移除）
-- 版本历史：v1.4（2026-10-02；单色渲染开关：§7.2 colors=false 单色语义、§7.4 分隔符纯字符形态、§8 [render] colors 键、§10.1 单测项）；v1.3.2（2026-10-01；§11 补录 CI/Release 工程化设施与 CHANGELOG 约定）；v1.3.1（2026-10-01；golden 测试数据内化本仓库 `testdata/golden/`，CI 自足，§10.2 同步）；v1.3（2026-10-01；第三轮独立 code review 后修订：§4.1 新鲜判定钉死为纯 mtime 语义、§5.1 错误归类按 send/body 阶段细分、§9 缓存损坏行同步表述）；v1.2（2026-10-01；P0–P5 实现落定后修订）；v1.1（2026-10-01；按第二轮复核 REVIEW.md 的 8 项发现修订 F1–F8）；v1.0
+- 版本：v1.5.1（2026-10-02；二次独立 code review（k3-256k/max）后修订：§7.7 决策 B 补记 sessionId 字符白名单 `[A-Za-z0-9_-]` 语义——实现自 P7 review 加固起即严格于三条拒绝规则，文本同步、无行为变更；§7.7 决策 E 补记 NotFound 空态豁免（目录不存在属空态而非失败）；§10.1 补失败语义与空态两单测项。同轮代码修复：任务文件读取/解析失败由「跳过该文件保留部分计数」改为短路零计数段整体省略——Major 契约冲突，经用户仲裁修代码对齐契约，详见 CHANGELOG [Unreleased] 修复）
+- 版本历史：v1.5（2026-10-02；追加 tasks/agents 徽章：§7.7 数据源与防御细则（决策 A–E）、§7.1/§7.2/§8/§10.1/§12 连带更新，含决策 C 按 kind 分裂与 question 不计入两轮仲裁定案；完整变更说明见 git 历史）；v1.4（2026-10-02；单色渲染开关：§7.2 colors=false 单色语义、§7.4 分隔符纯字符形态、§8 [render] colors 键、§10.1 单测项）；v1.3.2（2026-10-01；§11 补录 CI/Release 工程化设施与 CHANGELOG 约定）；v1.3.1（2026-10-01；golden 测试数据内化本仓库 `testdata/golden/`，CI 自足，§10.2 同步）；v1.3（2026-10-01；第三轮独立 code review 后修订：§4.1 新鲜判定钉死为纯 mtime 语义、§5.1 错误归类按 send/body 阶段细分、§9 缓存损坏行同步表述）；v1.2（2026-10-01；P0–P5 实现落定后修订）；v1.1（2026-10-01；按第二轮复核 REVIEW.md 的 8 项发现修订 F1–F8）；v1.0
 - 本文档与已定决策清单冲突时，以决策清单为准（本文已按决策清单如实收录；两处事实勘误见 §2.3）
 - 路径约定：所有 `path:line` 引用相对本仓库根（即本文件所在 `docs/` 目录的上一级）
 
@@ -321,10 +321,10 @@ tasks 徽章段格式（v1.5，数据源与防御规则见 §7.7）：段文本�
 **本工具设计决策（v1.5 落定）**：
 
 - **A 定位：扫描探测而非 sha256 反推**。read_dir `<kimi_home>/sessions/` → 逐 workspace 目录探测 `<ws>/<sessionId>` 子目录是否存在（sessionId 全局唯一，命中即定位；payload `sessionId` 缺失/为空 → 段省略）。理由：避免为 sha256 新增依赖（§11 白名单无 sha2，且还须复刻 workdir-slug.ts 的路径正则化细节）、容忍 cwd ≠ workspace.root（payload `cwd` 不用，§3.5）、成本仅 O(workspace 数) 次 stat。
-- **B 路径防御与扫描范围**：sessionId 来自宿主 payload，拼接路径前必须校验——含 `/`、`\` 或 `..` 时直接视为无效（段省略），防路径穿越。定位命中后遍历 `<sessionDir>/agents/*/tasks/*.json` 读取任务文件（文件名不校验、以 json 内容为准）。**仅扫 `agents/*/tasks/`，不兼容宿主旧版 CLI 写在 `<sessionDir>/tasks/` 直下的存量数据**（2026-10-02 已仲裁定案：宿主 main agent 持久化的 fallback 仅读旧数据用——persist.ts:99-103、151-154，现行 CLI 写入只走新路径 persist.ts:87-89；本机核实该位置无数据）。
+- **B 路径防御与扫描范围**：sessionId 来自宿主 payload，拼接路径前必须校验——含 `/`、`\` 或 `..` 时直接视为无效（段省略），防路径穿越。定位命中后遍历 `<sessionDir>/agents/*/tasks/*.json` 读取任务文件（文件名不校验、以 json 内容为准）。**仅扫 `agents/*/tasks/`，不兼容宿主旧版 CLI 写在 `<sessionDir>/tasks/` 直下的存量数据**（2026-10-02 已仲裁定案：宿主 main agent 持久化的 fallback 仅读旧数据用——persist.ts:99-103、151-154，现行 CLI 写入只走新路径 persist.ts:87-89；本机核实该位置无数据）。实现侧自 P7 首轮 review 加固起采用更严格的**字符白名单 `[A-Za-z0-9_-]`**（宿主真值 `session_<uuid>` 恒在其内；白名单一步覆盖上述三条拒绝规则，并封堵盘符相对路径、裸 `.`、UNC、非 ASCII 等残余穿越面；v1.5.1 文本同步，无行为变更）。
 - **C 陈旧防御：按 kind 分裂（2026-10-02 仲裁）**。`kind == "agent"` 的任务 json 无 pid 字段（见宿主事实块），**status=running 即计入 agent 计数，不做 pid 校验**——接受 CLI 崩溃场景下 agent 计数的陈旧误报，宿主重启加载会话会把遗留任务标 `lost` 自愈（见宿主事实块）。其余一切 kind（`"process"`、`"question"`、未知值、缺失）走 **pid 存活校验**：status=running 的任务须用 json 内 pid 校验进程存活——`windows-sys` 的 `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` + `GetExitCodeProcess`，句柄 NULL 或 exit code ≠ STILL_ACTIVE(259) → 视为已结束不计入；**pid 字段缺失或非正整数（字符串形态、负数、小数、超出 u32 等敌意形态）视同缺失，保守不计入**。推论：`kind=question` 的 running 任务因无 pid 恒不计入——与宿主把它归 bash 侧显示的口径存在已知偏差（2026-10-02 二次仲裁定案：维持保守不计入，宁少报勿误报）。
 - **D 扫描上限**（防病态目录拖垮 300ms 渲染预算）：workspace 探测数 ≤64、任务 json 读取数 ≤32，超限即停止并**按已读结果计数**（截断不是失败，不触发段省略）。
-- **E 失败即省略**：sessions 目录不存在、json 解析失败、任何 IO 错误 → 段整体省略，绝不阻塞渲染、绝不 panic（与 §9 精神一致）。
+- **E 失败即省略**：sessions 目录不存在、json 解析失败、任何 IO 错误 → 段整体省略，绝不阻塞渲染、绝不 panic（与 §9 精神一致）。v1.5.1 语义钉死（二次 review Major，经仲裁修代码对齐）：任务文件的读取/解析失败**短路返回零计数**——段整体省略，不得保留已积累的部分计数；目录不存在属空态而非失败——sessions 目录不存在即零计数省略，`agents/<id>/tasks/` 子目录不存在视同该 agent 无任务跳过（该路径的其余 IO 错误仍短路省略）。
 - 计数口径：仅 `status == "running"` 参与计数（五类终态跳过，未知 status 同样跳过）；`kind == "agent"`（严格字符串相等，对齐宿主 `===` 语义）→ agent 计数（running 即计入，决策 C），其余一切值 → bash 侧（经 pid 校验）。与宿主内存口径的差异仅两处已知偏差：bash 侧 pid 校验比宿主更严（宿主内存计数天然权威，本工具只有盘上数据）、question 侧不计入（已仲裁定案）。
 
 ---
@@ -398,7 +398,7 @@ tasks 徽章（v1.5）**不新增任何配置键**：开关即 order——从 or
 - 解析防御规则 §6 每条至少一个 case，以 quota.rs:243-374 与 `repos/kimi-planbar-tui/go/internal/core/quota_test.go` 为蓝本（字符串/数字混排、除零、`isEnabled=false`、单位四舍五入、`i64::MIN` 敌意值、reset 阶梯）。
 - 凭证链：credentials.rs:115-147 的两个既有单测函数原样移植（覆盖紧凑/带空格节名、节结算、空 api_key 拒绝场景）。
 - 本工具新增：thinking 阶梯（enabled=false / effort / models 回退）、颜色阈值边界（59.x/60/84.x/85）、reset 跨天格式、宽度降级阶梯、UTF-8 lossy、mtime 回拨计算（`now-TTL+30`）、月段有/无 limit、colors 单色开关两态（false 时输出不含任何 SGR 且可见内容与彩色版一致）。
-- tasks 徽章（v1.5，§7.7）：workspace 探测（sessionId 命中 / 未命中 / 路径穿越拒绝——含 `/`、`\`、`..` 的 sessionId 视为无效）、计数分流（kind=process 经 pid 校验计入 bash、kind=agent running 即计入 agent、kind=question 无 pid 不计入、五类终态与未知 status 不计入、kind 缺失归 bash 侧）、pid 存活防御 bash 三例（存活进程计入 / 已退出进程不计入 / pid 缺失或非正整数不计入）+ agent 一例（running 即计入，不做 pid 校验）、扫描上限（>64 workspace、>32 任务 json 截断后按已读结果计数、不触发段省略）、渲染位置（tasks 段位于额度组之前）与 colors=false 单色组合（无 SGR、两徽章单空格连接）。
+- tasks 徽章（v1.5，§7.7）：workspace 探测（sessionId 命中 / 未命中 / 路径穿越拒绝——含 `/`、`\`、`..` 的 sessionId 视为无效）、计数分流（kind=process 经 pid 校验计入 bash、kind=agent running 即计入 agent、kind=question 无 pid 不计入、五类终态与未知 status 不计入、kind 缺失归 bash 侧）、pid 存活防御 bash 三例（存活进程计入 / 已退出进程不计入 / pid 缺失或非正整数不计入）+ agent 一例（running 即计入，不做 pid 校验）、扫描上限（>64 workspace、>32 任务 json 截断后按已读结果计数、不触发段省略）、渲染位置（tasks 段位于额度组之前）与 colors=false 单色组合（无 SGR、两徽章单空格连接）、失败语义（v1.5.1 补：任务 json 解析/读取失败 → 段整体省略、不得保留部分计数；`agents/<id>/tasks/` 目录缺失按空态跳过、不触发省略）。
 
 ### 10.2 golden parity（30 case 对齐）
 
