@@ -14,6 +14,7 @@
 - 缓存新鲜判定为**纯 mtime**（SPEC §4.1 步骤 3 v1.3 钉死，Python `maybe_refresh` 同款）：与缓存是否可解析无关，空锚定/损坏/refresh 持续失败时靠回拨 mtime 压住派生风暴；锚定用 `create_new` 原子语义（绝不截断已有缓存），refresh 启动时清理 >60s 的孤儿 tmp。
 - month 段：limit 缺失/0/NaN 均不产生段；booster 开启时显示 `boost 余额`（纯 ASCII，避免 ¥ 在非 UTF-8 终端的兼容性问题）。
 - 单色开关（v1.4，P6）：`quota-bar.toml [render] colors = false` 时渲染输出纯文本（无任何 SGR），整行由宿主包装为主题 text 色（与 context 行同色，随 /theme 联动）；默认 true 多彩。
+- tasks/agents 徽章（v1.5，P7）：`src/tasks.rs` 扫描 `<kimi_home>/sessions/` 探测 payload sessionId 定位会话目录（workspace 探测 ≤64、任务 json 读取 ≤32、单文件 ≤64KB，超限截断计数非失败），按 kind 分流计数——`kind=agent` running 即计入 agent 侧（无 pid 字段，接受崩溃遗留的陈旧误报，宿主重启加载标 lost 自愈）；其余一切 kind 须经 `OpenProcess` + `GetExitCodeProcess` pid 存活校验（pid 缺失/非正整数视同缺失不计入，question 恒不计入）。计数在 `render_line` 外层算一次传入 4 个降级变体；sessionId 校验为字符白名单 `[A-Za-z0-9_-]`（宿主真值 `session_<uuid>` 恒在其内；严格于 SPEC 三条拒绝规则，封堵盘符相对路径/裸 `.` 等残余穿越面，review Minor 加固）；任何失败零计数段省略；默认 order 补 `"tasks"`，删去即关闭整段并跳过扫描。
 - 错误分类：超时（含 body 阶段）→ `TaskCanceledException`；非 2xx 与其余传输错误 → `HttpRequestException`；body 阶段非超时错误（连接 reset、非法 UTF-8）→ `JsonException`（SPEC §5.1 v1.3 钉死）。
 
 ## 权威文档（动手前必读）
@@ -41,7 +42,7 @@
 
 ## 验证与测试
 
-- 常用命令：`cargo build --release`（静态单 exe）；`cargo test`（47 个单元测试）；`cargo test --test golden`（33 个 golden 逐字节 parity——golden 的 datetime 偏移固定 +08:00，测试内有时区 fail-fast，须在 UTC+08:00 机器上跑）；自检：`target/release/quota-status.exe --test-fetch`（headless 不写缓存，`error == null` 即链路正常，无凭证输出 `"error": "no-token"`）。发版：打 tag `v*` 推送即触发 `.github/workflows/release.yml`（全量测试 + 构建 + 自动建 GitHub Release 挂 exe/sha256）。CI 门禁含 `cargo fmt --check` 与 `cargo clippy --all-targets -- -D warnings`（代码须先过这两关）。
+- 常用命令：`cargo build --release`（静态单 exe）；`cargo test`（66 个单元测试）；`cargo test --test golden`（33 个 golden 逐字节 parity——golden 的 datetime 偏移固定 +08:00，测试内有时区 fail-fast，须在 UTC+08:00 机器上跑）；自检：`target/release/quota-status.exe --test-fetch`（headless 不写缓存，`error == null` 即链路正常，无凭证输出 `"error": "no-token"`）。发版：打 tag `v*` 推送即触发 `.github/workflows/release.yml`（全量测试 + 构建 + 自动建 GitHub Release 挂 exe/sha256）。CI 门禁含 `cargo fmt --check` 与 `cargo clippy --all-targets -- -D warnings`（代码须先过这两关）。
 - golden parity：33 个 case 已全部内化 `testdata/golden/`（2026-10-01 从参考仓库逐字节复制 30 个既有 case，CI 自足；month 3 个原生），逐字节比对 + CRLF 归一化；参考仓库仍为上游事实来源，新增 case 绝不回写。
 - 真机验收六条见 SPEC §10.4；验收记录（含 2026-10-01 晚实装验收：footer 显示与活跃会话 1 分钟自动更新已通过、`/theme` 演练未触发）与偏差记录（体积 1.7MB 低于预估下限 3–5MB）见 README「验收记录」。
 

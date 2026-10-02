@@ -8,3 +8,4 @@ pub mod credentials;
 pub mod http;
 pub mod quota;
 pub mod render;
+pub mod tasks;

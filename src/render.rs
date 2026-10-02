@@ -1,12 +1,15 @@
 // 渲染模块（SPEC §7）：stdin 快照 + 本地缓存 -> 拼一行带 ANSI 颜色的文本。
-// 顺序：permissionMode -> model -> thinking -> 额度组(5h/week/month) ->
-// gitBranch；每段"有值才显示"，段间灰色 |，额度组内灰色 ·。
-// 宽度感知降级（§7.5）：丢 reset 后缀 -> 丢 gitBranch -> 只留额度组 -> 原样输出。
+// 顺序：permissionMode -> model -> thinking -> tasks/agents 徽章 ->
+// 额度组(5h/week/month) -> gitBranch；每段"有值才显示"，段间灰色 |，额度组内
+// 灰色 ·。宽度感知降级（§7.5）：丢 reset 后缀 -> 丢 gitBranch -> 只留额度组 ->
+// 原样输出。
 
 use crate::config::{Config, Field};
 use crate::quota::{ExtraState, QuotaResult};
+use crate::tasks::TaskCounts;
 use chrono::{DateTime, Local};
 use serde_json::Value;
+use std::path::Path;
 
 const RESET: &str = "\x1b[0m";
 const SEP_SEG: &str = " \x1b[90m|\x1b[0m "; // 段间分隔符（灰 |）
@@ -172,6 +175,7 @@ fn render_variant(
     cached: Option<&QuotaResult>,
     cfg: &Config,
     thinking: Option<&Thinking>,
+    tasks: TaskCounts,
     now: DateTime<Local>,
     opts: &VariantOpts,
 ) -> String {
@@ -216,6 +220,23 @@ fn render_variant(
                 Some(Thinking::Effort(eff)) => segs.push(span(CYAN, eff)),
                 None => {}
             },
+            // tasks/agents 徽章（SPEC §7.1/§7.7 v1.5）：段文本复刻宿主原生
+            // footer 徽章（footer.ts:483-494），单复数按计数；两徽章以单个
+            // 空格连接构成本段，皆零整段省略；cyan 36（§7.2）
+            Field::Tasks => {
+                let mut badges: Vec<String> = Vec::new();
+                if tasks.bash > 0 {
+                    let noun = if tasks.bash == 1 { "task" } else { "tasks" };
+                    badges.push(span(CYAN, &format!("[{} {noun} running]", tasks.bash)));
+                }
+                if tasks.agent > 0 {
+                    let noun = if tasks.agent == 1 { "agent" } else { "agents" };
+                    badges.push(span(CYAN, &format!("[{} {noun} running]", tasks.agent)));
+                }
+                if !badges.is_empty() {
+                    segs.push(badges.join(" "));
+                }
+            }
             // 额度组（组内灰 · 连接，SPEC §7.3）
             Field::Quota => {
                 let mut parts: Vec<String> = Vec::new();
@@ -284,6 +305,9 @@ pub fn visible_width(line: &str) -> usize {
 
 /// 宽度感知降级阶梯（SPEC §7.5）：0 全量 -> 1 丢 reset -> 2 丢 gitBranch ->
 /// 3 只留额度组 -> 4 仍超宽原样输出（交宿主截断）。
+/// `kimi_home` 供 tasks 徽章计数（SPEC §7.7）：order 含 "tasks" 时调用一次
+/// 扫描、结果传入全部 4 个降级变体（避免目录扫描被执行 4 次）；order 不含
+/// "tasks" 时跳过扫描（省 IO，SPEC §8 开关省 IO 惯例），home 缺失零计数。
 pub fn render_line(
     payload: &Value,
     cached: Option<&QuotaResult>,
@@ -291,13 +315,26 @@ pub fn render_line(
     thinking: Option<&Thinking>,
     width: u32,
     now: DateTime<Local>,
+    kimi_home: Option<&Path>,
 ) -> String {
+    // 计数在外层算一次（决策 D 上限内的单次扫描；sessionId 取自 payload
+    // §3.5，缺失/为空/无效时 tasks.rs 内部零计数）
+    let tasks = if cfg.order.contains(&Field::Tasks) {
+        let session_id = payload.get("sessionId").and_then(|v| v.as_str());
+        kimi_home
+            .map(|home| crate::tasks::count_running(home, session_id))
+            .unwrap_or_default()
+    } else {
+        TaskCounts::default()
+    };
+
     // 全量（reset 开关关闭则天然无后缀）；降级只删不重排
     let full = render_variant(
         payload,
         cached,
         cfg,
         thinking,
+        tasks,
         now,
         &VariantOpts {
             reset: cfg.quota.reset_time,
@@ -310,6 +347,7 @@ pub fn render_line(
         cached,
         cfg,
         thinking,
+        tasks,
         now,
         &VariantOpts {
             reset: false,
@@ -322,6 +360,7 @@ pub fn render_line(
         cached,
         cfg,
         thinking,
+        tasks,
         now,
         &VariantOpts {
             reset: false,
@@ -334,6 +373,7 @@ pub fn render_line(
         cached,
         cfg,
         thinking,
+        tasks,
         now,
         &VariantOpts {
             reset: false,
@@ -498,6 +538,7 @@ default_effort = "low"
             Some(&Thinking::Effort("high".into())),
             200,
             now(),
+            None,
         );
         assert!(line.starts_with("\x1b[31myolo\x1b[0m"), "yolo 红: {line:?}");
         assert!(line.contains("\x1b[36mKimi\x1b[0m"), "model cyan");
@@ -537,6 +578,7 @@ default_effort = "low"
             Some(&Thinking::Effort("high".into())),
             400,
             now(),
+            None,
         );
         assert!(full.contains("(rst"), "全量含 reset");
         assert!(full.contains("\x1b[35mmain"), "全量含 git");
@@ -550,6 +592,7 @@ default_effort = "low"
             Some(&Thinking::Effort("high".into())),
             w1,
             now(),
+            None,
         );
         assert!(!l1.contains("(rst"), "第 1 级丢 reset");
         assert!(l1.contains("\x1b[35mmain"), "第 1 级仍含 git");
@@ -563,6 +606,7 @@ default_effort = "low"
             Some(&Thinking::Effort("high".into())),
             w2,
             now(),
+            None,
         );
         assert!(!l2.contains("\x1b[35m"), "第 2 级丢 git");
         assert!(l2.contains("5h"), "第 2 级仍含额度组");
@@ -577,6 +621,7 @@ default_effort = "low"
             Some(&Thinking::Effort("high".into())),
             w3,
             now(),
+            None,
         );
         assert!(l3.contains("5h"), "第 3 级含额度组");
         assert!(!l3.contains("\x1b[36mKimi"), "第 3 级丢 model");
@@ -590,6 +635,7 @@ default_effort = "low"
             Some(&Thinking::Effort("high".into())),
             1,
             now(),
+            None,
         );
         assert_eq!(l4, full, "第 4 级原样输出交宿主截断");
     }
@@ -599,7 +645,7 @@ default_effort = "low"
     fn reset_time_config_off() {
         let cfg = parse_minimal("[render.quota]\nreset_time = false\n");
         let c = cached_full();
-        let line = render_line(&payload_full(), Some(&c), &cfg, None, 400, now());
+        let line = render_line(&payload_full(), Some(&c), &cfg, None, 400, now(), None);
         assert!(!line.contains("(rst"), "reset_time=false 永久丢 reset");
         assert!(line.contains("\x1b[35mmain"), "其余字段正常");
     }
@@ -612,10 +658,10 @@ default_effort = "low"
     #[test]
     fn empty_payload_renders_empty_line() {
         let cfg = Config::default();
-        let empty = render_line(&serde_json::json!({}), None, &cfg, None, 120, now());
+        let empty = render_line(&serde_json::json!({}), None, &cfg, None, 120, now(), None);
         assert_eq!(empty, "");
         // quota 组缓存缺失同样省略
-        let null_payload = render_line(&Value::Null, None, &cfg, None, 120, now());
+        let null_payload = render_line(&Value::Null, None, &cfg, None, 120, now(), None);
         assert_eq!(null_payload, "");
     }
 
@@ -638,7 +684,7 @@ default_effort = "low"
     fn order_and_error_cache() {
         let cfg = parse_minimal("[render]\norder = [\"quota\", \"permission_mode\"]\n");
         let c = cached_full();
-        let line = render_line(&payload_full(), Some(&c), &cfg, None, 400, now());
+        let line = render_line(&payload_full(), Some(&c), &cfg, None, 400, now(), None);
         assert!(line.starts_with("\x1b[32m5h"), "额度组在首位: {line:?}");
 
         let mut err = cached_full();
@@ -650,6 +696,7 @@ default_effort = "low"
             None,
             400,
             now(),
+            None,
         );
         assert!(!line.contains("5h"), "error 缓存不渲染额度组");
         assert!(line.contains("\x1b[31myolo"), "其余字段照常");
@@ -671,6 +718,7 @@ default_effort = "low"
             Some(&Thinking::Effort("high".into())),
             400,
             now(),
+            None,
         );
         assert!(!line.contains('\x1b'), "单色输出不得含 SGR: {line:?}");
         for piece in [
@@ -696,6 +744,7 @@ default_effort = "low"
             Some(&Thinking::Effort("high".into())),
             30,
             now(),
+            None,
         );
         assert!(!degraded.contains('\x1b'), "降级后仍须单色: {degraded:?}");
         assert!(
@@ -715,6 +764,7 @@ default_effort = "low"
             Some(&Thinking::Effort("high".into())),
             400,
             now(),
+            None,
         );
         let mut plain = String::new();
         let mut chars = colored.chars().peekable();
@@ -753,11 +803,12 @@ default_effort = "low"
             None,
             400,
             now(),
+            None,
         );
         assert!(!off.contains("boost"), "booster 默认不渲染");
 
         let cfg = parse_minimal("[render.quota]\nbooster = true\n");
-        let on = render_line(&payload_full(), Some(&c), &cfg, None, 400, now());
+        let on = render_line(&payload_full(), Some(&c), &cfg, None, 400, now(), None);
         assert!(
             on.contains("\x1b[36mboost 12.35\x1b[0m"),
             "booster ASCII 余额: {on:?}"
@@ -766,7 +817,234 @@ default_effort = "low"
         // 非 Ready（NoData/NotActivated）不显示
         let mut nodata = cached_full();
         nodata.extra.as_mut().unwrap().state = ExtraState::NoData;
-        let line = render_line(&payload_full(), Some(&nodata), &cfg, None, 400, now());
+        let line = render_line(&payload_full(), Some(&nodata), &cfg, None, 400, now(), None);
         assert!(!line.contains("boost"), "NoData 不显示余额");
+    }
+
+    // ---- tasks/agents 徽章（SPEC §7.1/§7.7 v1.5，PLAN P7 渲染侧单测）----
+
+    /// 隔离的临时 <kimi_home>（与 tasks.rs 测试同款，前缀区分）
+    fn temp_home(tag: &str) -> std::path::PathBuf {
+        let base = std::env::temp_dir().join(format!("qs-render-{}-{}", tag, std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        base
+    }
+
+    /// 落盘任务 json：<home>/sessions/wd_a/<sid>/agents/main/tasks/<task>.json
+    fn write_task(home: &std::path::Path, sid: &str, task: &str, json: &str) {
+        let dir = home
+            .join("sessions")
+            .join("wd_a")
+            .join(sid)
+            .join("agents")
+            .join("main")
+            .join("tasks");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(format!("{task}.json")), json).unwrap();
+    }
+
+    fn agent_running_json() -> &'static str {
+        r#"{"taskId":"t","status":"running","kind":"agent","startedAt":1}"#
+    }
+
+    /// 渲染位置（SPEC §10.1 v1.5）：tasks 段位于额度组之前；两徽章单空格
+    /// 连接成一段（各自 span 包装，同宿主 per-badge chalk 语义）；单复数按
+    /// 计数（1 task / 2 agents）。
+    #[test]
+    fn tasks_badge_before_quota_and_plural() {
+        let home = temp_home("position");
+        // 1 个 bash（pid = 本测试进程，必然存活）+ 2 个 agent
+        write_task(
+            &home,
+            "s",
+            "t1",
+            &format!(
+                r#"{{"status":"running","kind":"process","pid":{}}}"#,
+                std::process::id()
+            ),
+        );
+        write_task(&home, "s", "a1", agent_running_json());
+        write_task(&home, "s", "a2", agent_running_json());
+        let line = render_line(
+            &serde_json::json!({"sessionId": "s"}),
+            Some(&cached_full()),
+            &Config::default(),
+            None,
+            400,
+            now(),
+            Some(&home),
+        );
+        assert!(
+            line.contains("\x1b[36m[1 task running]\x1b[0m \x1b[36m[2 agents running]\x1b[0m"),
+            "单空格连接（各自 span 包装，同宿主 per-badge chalk）+ 单复数: {line:?}"
+        );
+        let badge = line.find("[1 task running]").unwrap();
+        let quota = line.find("5h").unwrap();
+        assert!(badge < quota, "tasks 须位于额度组之前: {line:?}");
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// colors=false 单色组合（SPEC §10.1 v1.5）：无任何 SGR、两徽章单空格
+    /// 连接、分隔符纯字符。
+    #[test]
+    fn tasks_badge_monochrome() {
+        let home = temp_home("mono");
+        write_task(
+            &home,
+            "s",
+            "t1",
+            &format!(
+                r#"{{"status":"running","kind":"process","pid":{}}}"#,
+                std::process::id()
+            ),
+        );
+        write_task(&home, "s", "a1", agent_running_json());
+        let cfg = Config {
+            colors: false,
+            ..Config::default()
+        };
+        let line = render_line(
+            &serde_json::json!({"sessionId": "s", "model": "Kimi"}),
+            None,
+            &cfg,
+            None,
+            400,
+            now(),
+            Some(&home),
+        );
+        assert!(!line.contains('\x1b'), "单色输出不得含 SGR: {line:?}");
+        assert!(
+            line.contains("[1 task running] [1 agent running]"),
+            "单空格连接: {line:?}"
+        );
+        assert!(line.contains(" | "), "纯字符段间分隔: {line:?}");
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// 降级第 3 级（只留额度组）随现有跳过逻辑丢弃 tasks 段（只删不重排）。
+    #[test]
+    fn tasks_badge_dropped_in_quota_only_degradation() {
+        let home = temp_home("degrade");
+        write_task(&home, "s", "a1", agent_running_json());
+        let payload = serde_json::json!({"model": "Kimi", "sessionId": "s", "gitBranch": "main"});
+        let c = cached_full();
+        let cfg = Config::default();
+
+        // 逐级缩宽到第 3 级触发点（同 width_degradation_ladder 手法）
+        let full = render_line(&payload, Some(&c), &cfg, None, 400, now(), Some(&home));
+        let l1 = render_line(
+            &payload,
+            Some(&c),
+            &cfg,
+            None,
+            visible_width(&full) as u32 - 1,
+            now(),
+            Some(&home),
+        );
+        assert!(
+            l1.contains("[1 agent running]"),
+            "第 1 级（丢 reset）仍含徽章"
+        );
+        let l2 = render_line(
+            &payload,
+            Some(&c),
+            &cfg,
+            None,
+            visible_width(&l1) as u32 - 1,
+            now(),
+            Some(&home),
+        );
+        assert!(
+            l2.contains("[1 agent running]"),
+            "第 2 级（丢 git）仍含徽章: {l2:?}"
+        );
+        let l3 = render_line(
+            &payload,
+            Some(&c),
+            &cfg,
+            None,
+            visible_width(&l2) as u32 - 1,
+            now(),
+            Some(&home),
+        );
+        assert!(l3.starts_with("\x1b[32m5h"), "第 3 级以额度组开头: {l3:?}");
+        assert!(!l3.contains("running"), "第 3 级丢 tasks 徽章");
+        assert!(!l3.contains("Kimi"), "第 3 级丢 model");
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// 扫描上限截断不触发段省略（SPEC §10.1 v1.5）：>32 个任务 json 截断后
+    /// 按已读计数渲染徽章（40 个 -> "[32 agents running]"）。
+    #[test]
+    fn tasks_badge_renders_truncated_counts() {
+        let home = temp_home("cap-render");
+        for i in 0..40 {
+            write_task(&home, "s", &format!("a{i:02}"), agent_running_json());
+        }
+        let line = render_line(
+            &serde_json::json!({"sessionId": "s"}),
+            None,
+            &Config::default(),
+            None,
+            400,
+            now(),
+            Some(&home),
+        );
+        assert!(
+            line.contains("[32 agents running]"),
+            "截断计数仍渲染: {line:?}"
+        );
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// 渲染端防御组合（SPEC §9 v1.5 行）：sessionId 穿越串 / sessions 目录
+    /// 缺失 -> 无徽章、其余字段正常、不 panic；order 删去 "tasks" 时段关闭
+    /// （并连带跳过扫描，SPEC §8）。
+    #[test]
+    fn tasks_badge_absent_on_defense_and_switch_off() {
+        let home = temp_home("defense");
+        write_task(&home, "s", "a1", agent_running_json());
+        let cfg = Config::default();
+
+        // 穿越串 -> 无徽章，model 正常
+        let line = render_line(
+            &serde_json::json!({"sessionId": "../evil", "model": "Kimi"}),
+            None,
+            &cfg,
+            None,
+            400,
+            now(),
+            Some(&home),
+        );
+        assert!(!line.contains("running"));
+        assert!(line.contains("\x1b[36mKimi\x1b[0m"));
+
+        // 未命中（sessions 下无该 sessionId）-> 无徽章
+        let line = render_line(
+            &serde_json::json!({"sessionId": "other"}),
+            None,
+            &cfg,
+            None,
+            400,
+            now(),
+            Some(&home),
+        );
+        assert!(!line.contains("running"));
+
+        // order 不含 "tasks" -> 整段关闭（扫描被跳过，kimi_home 照传）
+        let cfg_no_tasks = parse_minimal("[render]\norder = [\"model\", \"quota\"]\n");
+        let line = render_line(
+            &serde_json::json!({"sessionId": "s"}),
+            Some(&cached_full()),
+            &cfg_no_tasks,
+            None,
+            400,
+            now(),
+            Some(&home),
+        );
+        assert!(!line.contains("running"), "开关关闭无徽章: {line:?}");
+        assert!(line.contains("5h"), "其余字段正常");
+        std::fs::remove_dir_all(&home).ok();
     }
 }

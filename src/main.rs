@@ -76,7 +76,8 @@ fn main() {
                 None
             };
 
-            // 宽度感知降级（§7.5）+ 行拼接（§7.4）
+            // 宽度感知降级（§7.5）+ 行拼接（§7.4）；kimi_home 供 tasks 徽章
+            // 计数（§7.7，order 含 "tasks" 时扫描一次，v1.5）
             let line = render::render_line(
                 &payload,
                 cached.as_ref(),
@@ -84,6 +85,7 @@ fn main() {
                 thinking.as_ref(),
                 console::console_width(),
                 chrono::Local::now(),
+                credentials::kimi_home().as_deref(),
             );
 
             // 输出恰一行 + \n，stdout 强制 UTF-8 字节（§7.6），任何情况 exit 0

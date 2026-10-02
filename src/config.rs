@@ -10,6 +10,9 @@ pub enum Field {
     PermissionMode,
     Model,
     Thinking,
+    /// tasks/agents 徽章（SPEC §7.7 v1.5）：开关即 order——删去 "tasks" 即
+    /// 关闭整段并连带跳过 sessions 目录扫描（省 IO）
+    Tasks,
     Quota,
     GitBranch,
 }
@@ -19,6 +22,7 @@ fn parse_field(s: &str) -> Option<Field> {
         "permission_mode" => Some(Field::PermissionMode),
         "model" => Some(Field::Model),
         "thinking" => Some(Field::Thinking),
+        "tasks" => Some(Field::Tasks),
         "quota" => Some(Field::Quota),
         "git_branch" => Some(Field::GitBranch),
         _ => None,
@@ -54,10 +58,12 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
+            // v1.5：tasks 徽章位于额度组之前（SPEC §7.1/§8）
             order: vec![
                 Field::PermissionMode,
                 Field::Model,
                 Field::Thinking,
+                Field::Tasks,
                 Field::Quota,
                 Field::GitBranch,
             ],
@@ -296,5 +302,24 @@ http_timeout_seconds = 5
         assert!(!parse("[render]\ncolors = false\n").colors);
         assert!(parse("[render]\ncolors = true\n").colors);
         assert!(parse("[render]\ncolors = \"false\"\n").colors); // 非 bool 落默认
+    }
+
+    /// tasks 字段（SPEC §8 v1.5）：parse_field 认识 "tasks"；内置默认 order
+    /// 含 tasks 且位于额度组之前（thinking 之后、quota 之前）。
+    #[test]
+    fn tasks_field_parsed_and_positioned_in_default_order() {
+        let d = Config::default();
+        let pos = |f: Field| d.order.iter().position(|x| *x == f).unwrap();
+        assert!(
+            pos(Field::Tasks) < pos(Field::Quota),
+            "tasks 须在额度组之前"
+        );
+        assert!(
+            pos(Field::Thinking) < pos(Field::Tasks),
+            "tasks 在 thinking 之后"
+        );
+
+        let cfg = parse("[render]\norder = [\"model\", \"tasks\"]\n");
+        assert_eq!(cfg.order, vec![Field::Model, Field::Tasks]);
     }
 }

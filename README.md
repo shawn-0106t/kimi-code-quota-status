@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/shawn-0106t/kimi-code-quota-status/actions/workflows/ci.yml/badge.svg)](https://github.com/shawn-0106t/kimi-code-quota-status/actions/workflows/ci.yml) [![GitHub Release](https://img.shields.io/github/v/release/shawn-0106t/kimi-code-quota-status)](https://github.com/shawn-0106t/kimi-code-quota-status/releases)
 
-Kimi Code CLI 的 statusline 额度显示器：静态单二进制 `quota-status.exe`（Rust，Windows x64），在 footer 第 1 行显示 Kimi For Coding 套餐额度（5h / week / month + reset 时间），字段开关与行内顺序可自定义。
+Kimi Code CLI 的 statusline 额度显示器：静态单二进制 `quota-status.exe`（Rust，Windows x64），在 footer 第 1 行显示 Kimi For Coding 套餐额度（5h / week / month + reset 时间）与后台任务徽章（`[N task(s) running]` / `[M agent(s) running]`），字段开关与行内顺序可自定义。
 
 ## 工作原理
 
@@ -42,7 +42,7 @@ Kimi Code CLI 的 statusline 额度显示器：静态单二进制 `quota-status.
 ```toml
 [render]
 # 行内字段顺序（可删减、可重排；未列出的字段不显示）
-order = ["permission_mode", "model", "thinking", "quota", "git_branch"]
+order = ["permission_mode", "model", "thinking", "tasks", "quota", "git_branch"]
 # 单色开关：false 时输出纯文本（无任何颜色码），整行由 Kimi Code 包装为主题
 # text 色——与第 2 行 context 读数同色，随 /theme 切换联动；默认 true 多彩
 colors = true
@@ -70,6 +70,8 @@ http_timeout_seconds = 8
 
 环境变量优先级：`KIMI_CODE_BASE_URL` > `[network] base_url` > 内置默认。
 
+**tasks 徽章**（默认 order 已含 `"tasks"`）：显示当前会话的后台任务计数——bash 后台任务 `[N task(s) running]`（经 pid 存活校验）、后台 subagent `[M agent(s) running]`，cyan 配色，位于额度组之前，两者皆零时整段省略。不新增配置键：从 `order` 删去 `"tasks"` 即关闭该段（连带跳过会话任务目录扫描）；v1.0 时代已显式写了 `order` 的配置需手动把 `"tasks"` 加回才会显示。
+
 ## 故障排查（先读这里）
 
 **① 额度行整体消失**——按顺序检查：
@@ -88,7 +90,7 @@ http_timeout_seconds = 8
 
 ```bash
 cargo build --release          # 产物 target/release/quota-status.exe（静态 CRT，无 runtime 依赖）
-cargo test                     # 45 单元测试
+cargo test                     # 66 单元测试
 cargo test --test golden       # golden parity（33 个 golden 逐字节对齐）
 ```
 
@@ -117,6 +119,19 @@ golden 输入 payload 与期望值复刻自 `repos/kimi-planbar-tui`（只读参
 | `/theme` 重写演练（§10.4 条 6） | 本轮未实际触发：验收期间 tui.toml mtime 保持 22:40:34、段内注释仍在，host 未整文件重写；command 值 round-trip 保真仍以当前 main 源码（config.ts:298-312）为准，旧版本整段丢失的恢复步骤见故障排查① |
 
 渲染边界抽样（实装当日）：空 stdin → exit 0 按空 payload 降级；yolo→红、gitBranch null→省略；空锚定缓存 → mtime 回拨（精确 now−30s）→ detached refresh → 原子写缓存 401 字节，全链路观测通过。渲染端到端 20 次均值 ≈44ms（Git Bash 管道测量，含 shell fork 开销，为高估方向）< 50ms。
+
+### P7 tasks/agents 徽章验收（2026-10-02，临时 KIMI_CODE_HOME 隔离环境）
+
+| 项 | 结果 |
+|---|---|
+| 徽章渲染与位置 | 伪造 running bash 任务（pid 指向存活子进程）→ 输出含 cyan `[1 task running]` 且位于额度组之前，exit 0 |
+| pid 存活校验 | 终止子进程后再渲染 → 徽章消失 |
+| 路径防御 | sessionId 为 `../evil` / `a/b` / `a\b` / `.` / `C:evil` 均无徽章且 exit 0（白名单 `[A-Za-z0-9_-]`，严格于 SPEC §7.7 决策 B 三条规则——code review Minor 1 加固） |
+| 终态跳过 | `status:"completed"` 任务不产生徽章 |
+| agent 侧 | `kind:"agent"` running 无 pid → `[1 agent running]`（running 即计入）；与 bash 并存 → `[1 task running] [1 agent running]` 单空格连接 |
+| 单色组合 | `colors = false` 时徽章随单色路径输出纯文本、无任何 SGR |
+| 门禁 | fmt / clippy `-D warnings` / 66 单元测试 / 33 golden parity / release 构建 1,800,704 字节全绿；独立 code-reviewer 证伪复核结论"可交付"（0 Critical/0 Major，2 Minor 加固已落地） |
+| 热路径计时 | 真实负载（1 workspace + 1 任务）30 次均值与无扫描基线持平（81 vs 82 ms，Git Bash 管道含进程启动，增量 ≈0）；人工病态构造（64 workspace 探测 + 32 任务 json + 32 次 pid 校验打满）增量 ≈18ms，超 §4.1 的 10ms 进程内预算——真实会话不可达该形态且距宿主 300ms 硬超时余量 >5 倍；按 PLAN P7 风险节约定，收紧 64/32 上限属 SPEC §7.7 决策 D 契约数值，留待决策未单方面修改 |
 
 ## 已知限制
 
