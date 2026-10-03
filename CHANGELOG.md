@@ -8,7 +8,7 @@
 
 ### 依赖
 
-- windows-sys 0.60 → 0.61、toml 0.9 → 1.1、actions/checkout v4 → v7（Dependabot 首批自动升级；semver-major 项代码零改动通过全量门禁，Cargo.lock 净减 95 行）
+- windows-sys 0.60 → 0.61、toml 0.9 → 1.1、actions/checkout v4 → v7（Dependabot 首批自动升级；semver-major 项代码零改动通过全量门禁，Cargo.lock 净减 71 行）
 
 ## [1.1.0] - 2026-10-02
 

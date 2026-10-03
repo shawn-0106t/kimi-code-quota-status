@@ -4,7 +4,7 @@
 
 目标产物 `quota-status.exe`：Rust 静态单二进制，作为 Kimi Code CLI 的 statusline command（`~/.kimi-code/tui.toml` `[status_line]`），在 footer 第 1 行显示 Kimi For Coding 套餐额度（5h/week/month + reset 时间）。渲染路径只读本地缓存，缓存过期（TTL 60s）时派生 detached 子进程拉取 `/usages` 回填。
 
-**当前阶段：P0–P5 实现 + 三轮 review + 实装验收全部完成**（2026-10-01）。第三轮独立 code review 发现 2 Major（console CONOUT$ 句柄 access=0 致宽度查询恒失效、缓存新鲜判定把「可解析」相与进来架空 §4.4 防风暴）+ 3 Minor，已全部修复并补回归单测（SPEC bump v1.3）。cargo 工程即仓库根，产物 `target/release/quota-status.exe` ≈1.7MB 静态单 exe。2026-10-01 晚实装完成：exe 部署至 `~/.kimi-code/bin/quota-status.exe`（脱离 target/，重新 build 后需重新复制），tui.toml `[status_line] command` 已配置并生效；真机验收 §10.4 条 3 通过（footer 第 1 行正常显示、活跃会话内缓存 fetchedAt 连续推进、CONOUT$ 宽度查询真机复核正常），条 6 本轮未触发（验收期间 host 未重写 tui.toml）。排查步骤见 README「故障排查」，验收明细见 README「验收记录」。2026-10-01 发布 v1.0.0（tag `v*` 触发 release workflow 自动挂 exe/sha256，含 tag↔version 一致性校验；CI 门禁含 fmt/clippy；master 已开 branch protection 要求 CI `test` job 绿）。**P6（单色开关，SPEC v1.4）与 P7（tasks/agents 徽章，SPEC v1.5/v1.5.1）已于 2026-10-02 交付**：P7 经两轮独立 review——第二轮（k3-256k/max 证伪复核）发现 1 Major（任务文件失败语义与 SPEC §7.7 决策 E/§9 相悖、单测断言反向），经用户仲裁修代码对齐契约；PLAN P7 验收标准 1–5 全部通过（含真机 TUI 后台任务徽章出现/消失观察）。
+**当前阶段：P0–P5 实现 + 三轮 review + 实装验收全部完成**（2026-10-01）。第三轮独立 code review 发现 2 Major（console CONOUT$ 句柄 access=0 致宽度查询恒失效、缓存新鲜判定把「可解析」相与进来架空 §4.4 防风暴）+ 3 Minor，已全部修复并补回归单测（SPEC bump v1.3）。cargo 工程即仓库根，产物 `target/release/quota-status.exe` ≈1.7MB 静态单 exe。2026-10-01 晚实装完成：exe 部署至 `~/.kimi-code/bin/quota-status.exe`（脱离 target/；重新 build 后统一用 `scripts/deploy.ps1` 部署），tui.toml `[status_line] command` 已配置并生效；真机验收 §10.4 条 3 通过（footer 第 1 行正常显示、活跃会话内缓存 fetchedAt 连续推进、CONOUT$ 宽度查询真机复核正常），条 6 本轮未触发（验收期间 host 未重写 tui.toml）。排查步骤见 README「故障排查」，验收明细见 README「验收记录」。2026-10-01 发布 v1.0.0（tag `v*` 触发 release workflow 自动挂 exe/sha256，含 tag↔version 一致性校验；CI 门禁含 fmt/clippy；master 已开 branch protection 要求 CI `test` job 绿）。**P6（单色开关，SPEC v1.4）与 P7（tasks/agents 徽章，SPEC v1.5/v1.5.1）已于 2026-10-02 交付**：P7 经两轮独立 review——第二轮（k3-256k/max 证伪复核）发现 1 Major（任务文件失败语义与 SPEC §7.7 决策 E/§9 相悖、单测断言反向），经用户仲裁修代码对齐契约；PLAN P7 验收标准 1–5 全部通过（含真机 TUI 后台任务徽章出现/消失观察）。
 
 ## 实现落定要点（与参考实现/SPEC 旧文本的差异，均已过 review）
 
@@ -45,10 +45,10 @@
 - 常用命令：`cargo build --release`（静态单 exe）；`cargo test`（68 个单元测试）；`cargo test --test golden`（33 个 golden 逐字节 parity——golden 的 datetime 偏移固定 +08:00，测试内有时区 fail-fast，须在 UTC+08:00 机器上跑）；自检：`target/release/quota-status.exe --test-fetch`（headless 不写缓存，`error == null` 即链路正常，无凭证输出 `"error": "no-token"`）。发版：打 tag `v*` 推送即触发 `.github/workflows/release.yml`（全量测试 + 构建 + 自动建 GitHub Release 挂 exe/sha256）。CI 门禁含 `cargo fmt --check` 与 `cargo clippy --all-targets -- -D warnings`（代码须先过这两关）。
 - golden parity：33 个 case 已全部内化 `testdata/golden/`（2026-10-01 从参考仓库逐字节复制 30 个既有 case，CI 自足；month 3 个原生），逐字节比对 + CRLF 归一化；参考仓库仍为上游事实来源，新增 case 绝不回写。
 - 真机验收六条见 SPEC §10.4；验收记录（含 2026-10-01 晚实装验收：footer 显示与活跃会话 1 分钟自动更新已通过、`/theme` 演练未触发）与偏差记录（体积 1.7MB 低于预估下限 3–5MB）见 README「验收记录」。
-- **自动化（2026-10-03 起）**：CI 首个 job 为 gitleaks 全历史敏感扫描（本地 pre-commit 的兜底防线）；Dependabot 管理依赖与 CI action 升级（weekly，patch/minor 合并单 PR、major 单独开 PR——合并走 PR 的 required check，**不要直推绕过**）；部署统一用 `powershell -File scripts/deploy.ps1`（build --locked → 占用时 .old 改名兜底 → 复制 → sha256 校验，`-DstDir` 可覆盖目标目录），**重新构建后不要再手工复制 exe**；安全漏洞报告走 SECURITY.md 的私密漏洞报告渠道；README/CHANGELOG/SPEC 均有英文译本（*.en.md），中文为权威、英文随版本同步。
+- **自动化（2026-10-03 起）**：CI 首个 job 为 gitleaks 全历史敏感扫描（本地 pre-commit 的兜底防线；注意 gitleaks **未纳入** branch protection 的 required check——required 仅有 `test`，gitleaks 红需人工处理）；Dependabot 管理依赖与 CI action 升级（weekly，patch/minor 合并单 PR、major 单独开 PR——合并走 PR 的 required check，**不要直推绕过**）；部署统一用 `powershell -File scripts/deploy.ps1`（build --locked → 占用时 .old 改名兜底 → 复制 → sha256 校验，`-DstDir` 可覆盖目标目录），**重新构建后不要再手工复制 exe**；安全漏洞报告走 SECURITY.md 的私密漏洞报告渠道；README/CHANGELOG/SPEC 均有英文译本（*.en.md），中文为权威、英文随版本同步。
 
 ## 约定
 
 - 文档与代码注释：中文，技术术语保留 English。
 - 仓库根即 cargo 工程根（P0 落地：`Cargo.toml`、`.cargo/config.toml`、`src/` lib+bin 双目标、`tests/golden.rs`、`testdata/golden/`；`.gitignore` 已含 `target/`）。
-- 设计文档集中在 docs/（SPEC/PLAN/REVIEW/HANDOFF）；根目录保留 AGENTS.md、README.md、CHANGELOG.md（双语 CHANGELOG.en.md）、SECURITY.md 与 LICENSE/NOTICE。
+- 设计文档集中在 docs/（SPEC/PLAN/REVIEW 系/HANDOFF；SPEC/README/CHANGELOG 另有 *.en.md 英文译本）；根目录保留 AGENTS.md、README.md（双语 README.en.md）、CHANGELOG.md（双语 CHANGELOG.en.md）、SECURITY.md 与 LICENSE/NOTICE。

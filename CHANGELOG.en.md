@@ -10,7 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Dependencies
 
-- windows-sys 0.60 → 0.61, toml 0.9 → 1.1, and actions/checkout v4 → v7 (first Dependabot batch; semver-major bumps pass the full gate suite with zero code changes, Cargo.lock nets −95 lines)
+- windows-sys 0.60 → 0.61, toml 0.9 → 1.1, and actions/checkout v4 → v7 (first Dependabot batch; semver-major bumps pass the full gate suite with zero code changes, Cargo.lock nets −71 lines)
 
 ## [1.1.0] - 2026-10-02
 
