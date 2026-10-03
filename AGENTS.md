@@ -19,9 +19,9 @@
 
 ## 权威文档（动手前必读）
 
-- **docs/SPEC.md**（v1.3）——唯一契约事实来源。改行为前必读：§3 宿主契约、§5–6 数据层与解析防御规则、§7 渲染与降级、§10 测试契约、§11 工程约束、§12 风险。
-- **docs/PLAN.md**（v1.3）——P0–P5 分阶段计划（任务清单、可执行验收标准、依赖顺序），与 SPEC 冲突时以 SPEC 为准；文头有完成状态标注。
-- **docs/REVIEW.md**——第二轮独立复核报告（历史记录；其中 8 项发现已逐条仲裁并修订进 SPEC/PLAN，勿据旧表述回改）；**docs/REVIEW3.md**——第三轮实现后 code review 报告（2 Major/3 Minor 已全部修复，复核结论"可交付"）。
+- **docs/SPEC.md**（v1.5.1）——唯一契约事实来源。改行为前必读：§3 宿主契约、§5–6 数据层与解析防御规则、§7 渲染与降级、§10 测试契约、§11 工程约束、§12 风险。
+- **docs/PLAN.md**（v1.5.1）——P0–P5 分阶段计划 + P6/P7 追加迭代（任务清单、可执行验收标准、依赖顺序），与 SPEC 冲突时以 SPEC 为准；文头有完成状态标注。
+- **docs/REVIEW.md**——第二轮独立复核报告（历史记录；其中 8 项发现已逐条仲裁并修订进 SPEC/PLAN，勿据旧表述回改）；**docs/REVIEW3.md**——第三轮实现后 code review 报告（2 Major/3 Minor 已全部修复，复核结论"可交付"）；**docs/HANDOFF.md**——P7 迭代交接记录（实现状态、决策点、接手须知）。
 
 ## 硬约束（违反即返工）
 
@@ -45,9 +45,10 @@
 - 常用命令：`cargo build --release`（静态单 exe）；`cargo test`（68 个单元测试）；`cargo test --test golden`（33 个 golden 逐字节 parity——golden 的 datetime 偏移固定 +08:00，测试内有时区 fail-fast，须在 UTC+08:00 机器上跑）；自检：`target/release/quota-status.exe --test-fetch`（headless 不写缓存，`error == null` 即链路正常，无凭证输出 `"error": "no-token"`）。发版：打 tag `v*` 推送即触发 `.github/workflows/release.yml`（全量测试 + 构建 + 自动建 GitHub Release 挂 exe/sha256）。CI 门禁含 `cargo fmt --check` 与 `cargo clippy --all-targets -- -D warnings`（代码须先过这两关）。
 - golden parity：33 个 case 已全部内化 `testdata/golden/`（2026-10-01 从参考仓库逐字节复制 30 个既有 case，CI 自足；month 3 个原生），逐字节比对 + CRLF 归一化；参考仓库仍为上游事实来源，新增 case 绝不回写。
 - 真机验收六条见 SPEC §10.4；验收记录（含 2026-10-01 晚实装验收：footer 显示与活跃会话 1 分钟自动更新已通过、`/theme` 演练未触发）与偏差记录（体积 1.7MB 低于预估下限 3–5MB）见 README「验收记录」。
+- **自动化（2026-10-03 起）**：CI 首个 job 为 gitleaks 全历史敏感扫描（本地 pre-commit 的兜底防线）；Dependabot 管理依赖与 CI action 升级（weekly，patch/minor 合并单 PR、major 单独开 PR——合并走 PR 的 required check，**不要直推绕过**）；部署统一用 `powershell -File scripts/deploy.ps1`（build --locked → 占用时 .old 改名兜底 → 复制 → sha256 校验，`-DstDir` 可覆盖目标目录），**重新构建后不要再手工复制 exe**；安全漏洞报告走 SECURITY.md 的私密漏洞报告渠道；README/CHANGELOG/SPEC 均有英文译本（*.en.md），中文为权威、英文随版本同步。
 
 ## 约定
 
 - 文档与代码注释：中文，技术术语保留 English。
 - 仓库根即 cargo 工程根（P0 落地：`Cargo.toml`、`.cargo/config.toml`、`src/` lib+bin 双目标、`tests/golden.rs`、`testdata/golden/`；`.gitignore` 已含 `target/`）。
-- 设计文档集中在 docs/（SPEC/PLAN/REVIEW）；根目录仅保留 AGENTS.md、README.md（P5 交付）与 LICENSE/NOTICE。
+- 设计文档集中在 docs/（SPEC/PLAN/REVIEW/HANDOFF）；根目录保留 AGENTS.md、README.md、CHANGELOG.md（双语 CHANGELOG.en.md）、SECURITY.md 与 LICENSE/NOTICE。
