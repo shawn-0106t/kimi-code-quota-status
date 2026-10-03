@@ -11,7 +11,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # serde feature: DateTime<Local> 直接序列化为 RFC3339（AutoSi 小数秒，golden 对齐依赖此行为）
 chrono = { version = "0.4", features = ["serde", "clock"] }
-toml = "0.9"
+toml = "1.1"
 # 阻塞式轻量 HTTP client + rustls（打包根证书），SPEC §11 白名单；禁 tokio/async
 ureq = { version = "3", features = ["rustls"] }
 filetime = "0.2"
