@@ -15,7 +15,7 @@ toml = "0.9"
 # 阻塞式轻量 HTTP client + rustls（打包根证书），SPEC §11 白名单；禁 tokio/async
 ureq = { version = "3", features = ["rustls"] }
 filetime = "0.2"
-windows-sys = { version = "0.60", features = [
+windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Security",
     "Win32_Storage_FileSystem",
