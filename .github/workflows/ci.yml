@@ -15,7 +15,7 @@ jobs:
       contents: read # 最小权限；gitleaks-action@v2 对个人公共 repo 无需 GITLEAKS_LICENSE
       # （未来转入 org 或转 private 时会开始要求 license，job 会明确报错提示）
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # 完整历史，gitleaks 扫描全部 commit
 
@@ -28,7 +28,7 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set timezone to UTC+08:00 (golden parity fail-fast requirement)
         run: tzutil /s "China Standard Time"
