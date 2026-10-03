@@ -7,6 +7,22 @@ on:
   workflow_dispatch:
 
 jobs:
+  # 敏感信息扫描（第二道防线）：本地 pre-commit 的 gitleaks 可被 --no-verify
+  # 绕过，CI 侧对全量提交历史兜底扫描
+  gitleaks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # 最小权限；gitleaks-action@v2 对个人公共 repo 无需 GITLEAKS_LICENSE
+      # （未来转入 org 或转 private 时会开始要求 license，job 会明确报错提示）
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 完整历史，gitleaks 扫描全部 commit
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   test:
     runs-on: windows-latest
     env:

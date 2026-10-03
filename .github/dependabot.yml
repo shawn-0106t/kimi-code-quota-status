@@ -1,0 +1,25 @@
+version: 2
+
+updates:
+  # Rust 依赖（Cargo.toml + Cargo.lock）；patch/minor 合并为单 PR 控噪音，
+  # major 升级单独开 PR 便于逐个评估
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      cargo-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions 版本（ci.yml / release.yml）
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
