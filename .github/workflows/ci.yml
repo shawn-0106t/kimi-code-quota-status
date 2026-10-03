@@ -25,6 +25,8 @@ jobs:
 
   test:
     runs-on: windows-latest
+    permissions:
+      contents: read # 最小权限；test 仅需 checkout 拉取代码（CodeQL actions/missing-workflow-permissions）
     env:
       CARGO_TERM_COLOR: always
     steps:

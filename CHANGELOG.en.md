@@ -12,6 +12,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - windows-sys 0.60 → 0.61, toml 0.9 → 1.1, and actions/checkout v4 → v7 (first Dependabot batch; semver-major bumps pass the full gate suite with zero code changes, Cargo.lock nets −71 lines)
 
+### Security
+
+- CI `ci.yml` `test` job now declares explicit least-privilege `permissions: contents: read` — fixes the medium alert `actions/missing-workflow-permissions` from the first CodeQL default-setup scan (2026-10-03); both `ci.yml` jobs and `release.yml` (workflow-level `contents: write`) now declare explicit minimal permissions, so GITHUB_TOKEN no longer falls back to repository defaults
+
 ## [1.1.0] - 2026-10-02
 
 ### Added

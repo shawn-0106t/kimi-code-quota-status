@@ -10,6 +10,10 @@
 
 - windows-sys 0.60 → 0.61、toml 0.9 → 1.1、actions/checkout v4 → v7（Dependabot 首批自动升级；semver-major 项代码零改动通过全量门禁，Cargo.lock 净减 71 行）
 
+### 安全
+
+- CI `ci.yml` 的 `test` job 补显式最小权限 `permissions: contents: read`——修复 CodeQL default setup 首扫 medium 告警 `actions/missing-workflow-permissions`（2026-10-03）；至此 `ci.yml` 两 job 与 `release.yml`（workflow 级 `contents: write`）均显式声明最小权限，GITHUB_TOKEN 不再回落 repo 默认权限
+
 ## [1.1.0] - 2026-10-02
 
 ### 新增

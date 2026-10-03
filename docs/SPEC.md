@@ -1,8 +1,8 @@
 # quota-status 契约文档（SPEC）
 
 - 项目：quota-status —— Rust 实现的 Kimi Code CLI statusline 额度显示器（单二进制 `quota-status.exe`）
-- 版本：v1.5.1（2026-10-02；二次独立 code review（k3-256k/max）后修订：§7.7 决策 B 补记 sessionId 字符白名单 `[A-Za-z0-9_-]` 语义——实现自 P7 review 加固起即严格于三条拒绝规则，文本同步、无行为变更；§7.7 决策 E 补记 NotFound 空态豁免（目录不存在属空态而非失败）；§10.1 补失败语义与空态两单测项。同轮代码修复：任务文件读取/解析失败由「跳过该文件保留部分计数」改为短路零计数段整体省略——Major 契约冲突，经用户仲裁修代码对齐契约，详见 CHANGELOG [1.1.0] 修复）
-- 版本历史：v1.5（2026-10-02；追加 tasks/agents 徽章：§7.7 数据源与防御细则（决策 A–E）、§7.1/§7.2/§8/§10.1/§12 连带更新，含决策 C 按 kind 分裂与 question 不计入两轮仲裁定案；完整变更说明见 git 历史）；v1.4（2026-10-02；单色渲染开关：§7.2 colors=false 单色语义、§7.4 分隔符纯字符形态、§8 [render] colors 键、§10.1 单测项）；v1.3.2（2026-10-01；§11 补录 CI/Release 工程化设施与 CHANGELOG 约定）；v1.3.1（2026-10-01；golden 测试数据内化本仓库 `testdata/golden/`，CI 自足，§10.2 同步）；v1.3（2026-10-01；第三轮独立 code review 后修订：§4.1 新鲜判定钉死为纯 mtime 语义、§5.1 错误归类按 send/body 阶段细分、§9 缓存损坏行同步表述）；v1.2（2026-10-01；P0–P5 实现落定后修订）；v1.1（2026-10-01；按第二轮复核 REVIEW.md 的 8 项发现修订 F1–F8）；v1.0
+- 版本：v1.5.2（2026-10-03；§11 CI 工程化条目补记：两 workflow 全部 job 显式声明最小 `permissions`（ci.yml 各 job `contents: read`、release.yml workflow 级 `contents: write`）——修复 CodeQL default setup 首扫 medium 告警 `actions/missing-workflow-permissions`；纯工程化记录，无行为变更）
+- 版本历史：v1.5.1（2026-10-02；二次独立 code review（k3-256k/max）后修订：§7.7 决策 B 补记 sessionId 字符白名单 `[A-Za-z0-9_-]` 语义、决策 E 补记 NotFound 空态豁免、§10.1 补失败语义与空态两单测项；同轮代码修复：任务文件读取/解析失败改为短路零计数段整体省略——Major 契约冲突经用户仲裁修代码对齐契约，详见 CHANGELOG [1.1.0] 修复）；v1.5（2026-10-02；追加 tasks/agents 徽章：§7.7 数据源与防御细则（决策 A–E）、§7.1/§7.2/§8/§10.1/§12 连带更新，含决策 C 按 kind 分裂与 question 不计入两轮仲裁定案；完整变更说明见 git 历史）；v1.4（2026-10-02；单色渲染开关：§7.2 colors=false 单色语义、§7.4 分隔符纯字符形态、§8 [render] colors 键、§10.1 单测项）；v1.3.2（2026-10-01；§11 补录 CI/Release 工程化设施与 CHANGELOG 约定）；v1.3.1（2026-10-01；golden 测试数据内化本仓库 `testdata/golden/`，CI 自足，§10.2 同步）；v1.3（2026-10-01；第三轮独立 code review 后修订：§4.1 新鲜判定钉死为纯 mtime 语义、§5.1 错误归类按 send/body 阶段细分、§9 缓存损坏行同步表述）；v1.2（2026-10-01；P0–P5 实现落定后修订）；v1.1（2026-10-01；按第二轮复核 REVIEW.md 的 8 项发现修订 F1–F8）；v1.0
 - 本文档与已定决策清单冲突时，以决策清单为准（本文已按决策清单如实收录；两处事实勘误见 §2.3）
 - 路径约定：所有 `path:line` 引用相对本仓库根（即本文件所在 `docs/` 目录的上一级）
 - 英文译本：[`SPEC.en.md`](SPEC.en.md)（随版本同步；两文不一致时以本文为准）
@@ -436,7 +436,7 @@ tasks 徽章（v1.5）**不新增任何配置键**：开关即 order——从 or
 - 渲染路径禁网络、禁重 IO（<10ms 预算）；取数路径 HTTP 超时 8s。
 - stdout 强制 UTF-8（errors=replace 语义，§7.6）；detached 子进程 `CREATE_NO_WINDOW | DETACHED_PROCESS` + stdio DEVNULL（§4.4）。
 - 新写代码量预计 300–500 行（渲染 + 字段配置 + 缓存三模块）。
-- CI/Release 工程化（v1.3.2 补录）：`.github/workflows/ci.yml`（push/PR 触发：`cargo fmt --check` + `cargo clippy --all-targets -- -D warnings` + 单元 + golden + release 构建 + 5MB 体积门禁）；`.github/workflows/release.yml`（tag `v*` 触发：tag↔Cargo.toml version 一致性校验 + 全量测试 + 构建 + 自动建 GitHub Release 挂 exe/sha256）。变更历史手写维护于 `CHANGELOG.md`（Keep a Changelog 格式）。
+- CI/Release 工程化（v1.3.2 补录）：`.github/workflows/ci.yml`（push/PR 触发：`cargo fmt --check` + `cargo clippy --all-targets -- -D warnings` + 单元 + golden + release 构建 + 5MB 体积门禁）；`.github/workflows/release.yml`（tag `v*` 触发：tag↔Cargo.toml version 一致性校验 + 全量测试 + 构建 + 自动建 GitHub Release 挂 exe/sha256）。两 workflow 全部 job 显式声明最小 `permissions`（ci.yml 各 job `contents: read`、release.yml workflow 级 `contents: write`；v1.5.2 补记——CodeQL 首扫 medium 告警 `actions/missing-workflow-permissions` 修复）。变更历史手写维护于 `CHANGELOG.md`（Keep a Changelog 格式）。
 
 ---
 
