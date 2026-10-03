@@ -2,6 +2,8 @@
 
 本仓库的显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+> 英文译本：[CHANGELOG.en.md](CHANGELOG.en.md)（随版本同步；两文不一致时以本文为准）。
+
 ## [Unreleased]
 
 ## [1.1.0] - 2026-10-02
