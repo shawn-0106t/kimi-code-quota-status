@@ -19,7 +19,7 @@ jobs:
         with:
           fetch-depth: 0 # 完整历史，gitleaks 扫描全部 commit
 
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
