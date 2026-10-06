@@ -1,0 +1,6 @@
+# Pins the contributor toolchain to the exact version the release binaries are built with.
+# Cargo.toml `rust-version` remains the MSRV floor. CI (ci.yml) still runs the latest stable:
+# the dtolnay/rust-toolchain action exports RUSTUP_TOOLCHAIN, which overrides this file.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]

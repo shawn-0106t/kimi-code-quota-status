@@ -1,14 +1,14 @@
-// 凭证链，1:1 移植自 repos/kimi-planbar-tui/rust/src/credentials.rs（SPEC §5.2）：
-// 1) <kimi_home>/credentials/kimi-code.json -> access_token（expires_at > now+30s）
-// 2) <kimi_home>/config.toml -> base_url 含 api.kimi.com/coding 且 api_key 非空的 provider
-// 3) 皆无 -> 调用方报 "no-token"
-// token 新鲜度依赖运行中的 CLI，本工具绝不自行刷新（SPEC §1.2/§5.2，只读不写）。
+// Credential chain, ported 1:1 from repos/kimi-planbar-tui/rust/src/credentials.rs (SPEC §5.2):
+// 1) <kimi_home>/credentials/kimi-code.json -> access_token (expires_at > now+30s)
+// 2) <kimi_home>/config.toml -> provider whose base_url contains api.kimi.com/coding and whose api_key is non-empty
+// 3) none of the above -> caller reports "no-token"
+// Token freshness relies on the running CLI; this tool never refreshes tokens itself (SPEC §1.2/§5.2, read-only).
 
 use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 
-/// JSON number-or-string -> f64（服务端把数字按字符串建模）。
+/// JSON number-or-string -> f64 (the server models numbers as strings).
 fn as_f64(v: &Value) -> Option<f64> {
     match v {
         Value::Number(n) => n.as_f64(),
@@ -30,8 +30,8 @@ fn home_dir() -> Option<PathBuf> {
     None
 }
 
-/// <kimi_home> 解析提为 pub：凭证/缓存/配置三处路径共用（SPEC §5.2/§5.3/§8）。
-/// = %USERPROFILE%/.kimi-code，env KIMI_CODE_HOME 非空时整体覆盖。
+/// <kimi_home> resolution made pub: shared by the credential/cache/config paths (SPEC §5.2/§5.3/§8).
+/// = %USERPROFILE%/.kimi-code, wholly overridden when env KIMI_CODE_HOME is non-empty.
 pub fn kimi_home() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("KIMI_CODE_HOME")
         && !p.is_empty()
@@ -44,7 +44,7 @@ pub fn kimi_home() -> Option<PathBuf> {
 pub fn load_token() -> Option<String> {
     let kimi = kimi_home()?;
 
-    // 1) OAuth access token（来自凭证存储；过期视为无效继续兜底）
+    // 1) OAuth access token (from the credential store; expired counts as invalid and falls through)
     let cred = kimi.join("credentials").join("kimi-code.json");
     if let Ok(text) = fs::read_to_string(&cred)
         && let Ok(v) = serde_json::from_str::<Value>(&text)
@@ -57,15 +57,15 @@ pub fn load_token() -> Option<String> {
         }
     }
 
-    // 2) config.toml 兜底：逐行解析（非完整 TOML parser）
+    // 2) config.toml fallback: line-by-line parsing (not a full TOML parser)
     let cfg_path = kimi.join("config.toml");
     let text = fs::read_to_string(&cfg_path).ok()?;
     parse_config_provider(&text)
 }
 
-/// config.toml 逐行扫描，拆出供单测（纯文本 -> api_key）。
-/// 参考实现用 regex `^(base_url|api_key)\s*=\s*"([^"]*)"` 抽取键值；regex 不在
-/// SPEC §11 依赖白名单，此处手写等价解析（语义由移植单测钉死）。
+/// Line-by-line scan of config.toml, split out for unit tests (plain text -> api_key).
+/// The reference implementation uses regex `^(base_url|api_key)\s*=\s*"([^"]*)"` to extract key-values; regex is not
+/// in the SPEC §11 dependency allowlist, so this is a hand-written equivalent parser (semantics pinned by ported unit tests).
 fn parse_config_provider(text: &str) -> Option<String> {
     let mut section: Option<String> = None;
     let mut base_url: Option<String> = None;
@@ -102,8 +102,8 @@ fn parse_config_provider(text: &str) -> Option<String> {
     match_provider(section.as_deref(), base_url.as_deref(), api_key.as_deref())
 }
 
-/// 等价 regex `^(base_url|api_key)\s*=\s*"([^"]*)"`：key 必须紧邻行首（其后仅
-/// 空白到 `=`），值取首个引号包裹段（可含空串，行尾多余内容忽略）。
+/// Equivalent to regex `^(base_url|api_key)\s*=\s*"([^"]*)"`: the key must sit right at line start
+/// (only whitespace before `=`); the value is the first quoted segment (may be empty, trailing content ignored).
 fn parse_kv(line: &str) -> Option<(&'static str, &str)> {
     let eq = line.find('=')?;
     let key = match line[..eq].trim_end() {
@@ -124,8 +124,8 @@ fn match_provider(
     match (section, base_url, api_key) {
         (Some(s), Some(b), Some(k))
             if s.starts_with("providers.")
-                // SPEC §5.2 勘误增强：国际站（api.kimi.ai/coding）纯 API key
-                // 用户也走此兜底（参考实现只认 api.kimi.com/coding）
+                // SPEC §5.2 erratum enhancement: international-site (api.kimi.ai/coding) pure API key
+                // users also take this fallback (the reference implementation only accepted api.kimi.com/coding)
                 && (b.contains("api.kimi.com/coding") || b.contains("api.kimi.ai/coding"))
                 && !k.is_empty() =>
         {
@@ -175,22 +175,22 @@ mod tests {
         assert_eq!(parse_config_provider("not toml at all"), None);
     }
 
-    /// SPEC §5.2 增强回归：国际站 provider（api.kimi.ai/coding）也能兜底取 key。
+    /// SPEC §5.2 enhancement regression: an international-site provider (api.kimi.ai/coding) can also fall back to fetch the key.
     #[test]
     fn config_toml_matches_international_host() {
         let intl = "[providers.kimi-global]\nbase_url = \"https://api.kimi.ai/coding/v1\"\napi_key = \"key-global\"\n";
         assert_eq!(parse_config_provider(intl), Some("key-global".to_string()));
     }
 
-    /// parse_kv 与原 regex 语义对齐的边界：键名前缀不匹配、无引号值、未闭合
-    /// 引号、行尾多余内容均不误取。
+    /// Edge cases aligning parse_kv with the original regex semantics: key-name prefix mismatch, unquoted value,
+    /// unclosed quote, and trailing line content are all rejected without a false match.
     #[test]
     fn parse_kv_rejects_non_matching_shapes() {
-        assert_eq!(parse_kv("base_urls = \"x\""), None); // 键名后缀不是空白/= 
-        assert_eq!(parse_kv("foo_base_url = \"x\""), None); // 行首不是键名
-        assert_eq!(parse_kv("base_url = x"), None); // 无引号
-        assert_eq!(parse_kv("api_key = \"unclosed"), None); // 未闭合
-        assert_eq!(parse_kv("# base_url = \"x\""), None); // 注释行
+        assert_eq!(parse_kv("base_urls = \"x\""), None); // what follows the key name is not whitespace/= 
+        assert_eq!(parse_kv("foo_base_url = \"x\""), None); // line does not start with a key name
+        assert_eq!(parse_kv("base_url = x"), None); // no quotes
+        assert_eq!(parse_kv("api_key = \"unclosed"), None); // unclosed
+        assert_eq!(parse_kv("# base_url = \"x\""), None); // comment line
         assert_eq!(parse_kv("base_url=\"v\" trailing"), Some(("base_url", "v")));
         assert_eq!(parse_kv("api_key=\"\""), Some(("api_key", "")));
     }

@@ -1,11 +1,11 @@
-// quota-status —— Kimi Code CLI statusline 额度显示器（SPEC §1）。
+// quota-status -- Kimi Code CLI statusline quota display (SPEC §1).
 //
-// 三种运行模式（SPEC §4）：
-//   渲染模式（无参数）：stdin 快照 + 本地缓存 → 拼一行 ANSI 文本，毫秒级退出；
-//   取数模式 --refresh：凭证链 → GET /usages → 防御解析 → 原子写缓存；
-//   自检模式 --test-fetch：同取数但不写缓存，结果 pretty JSON 打印到 stdout。
+// Three run modes (SPEC §4):
+//   Render mode (no args): stdin snapshot + local cache -> assemble one line of ANSI text, exit in milliseconds;
+//   Fetch mode --refresh: credential chain -> GET /usages -> defensive parsing -> atomic cache write;
+//   Self-check mode --test-fetch: same as fetch but no cache write, result printed as pretty JSON to stdout.
 //
-// 实现全部在 lib crate（src/lib.rs），本文件只做 argv 分发。
+// All implementation lives in the lib crate (src/lib.rs); this file only does argv dispatch.
 
 use quota_status::{cache, config, console, credentials, quota, render};
 use std::io::Write;
@@ -16,23 +16,23 @@ fn load_config() -> config::Config {
         .unwrap_or_default()
 }
 
-/// 读 thinking 相关段的 config.toml 文本（失败 -> None，段省略）。
-/// 与 credentials 的逐行 provider 扫描互不干扰（独立解析函数）。
+/// Reads the config.toml text for the thinking-related segment (failure -> None, segment omitted).
+/// Independent of credentials' line-by-line provider scan (separate parsing function).
 fn config_toml_text() -> Option<String> {
     std::fs::read_to_string(credentials::kimi_home()?.join("config.toml")).ok()
 }
 
 fn main() {
-    // args_os：非 Unicode argv 不 panic（args() 会；panic=abort 下宿主回退内置 footer）
+    // args_os: non-Unicode argv does not panic (args() would; under panic=abort the host falls back to the built-in footer)
     let mode = std::env::args_os().nth(1);
     let mode = mode.as_deref().and_then(std::ffi::OsStr::to_str);
     let cfg = load_config();
     match mode {
-        // 取数模式（SPEC §4.2）：凭证链 -> GET /usages（8s 超时，可配）->
-        // 防御解析 -> 原子写缓存；任何失败不写缓存（LKG + fast-retry），总是 exit 0
+        // Fetch mode (SPEC §4.2): credential chain -> GET /usages (8s timeout, configurable) ->
+        // defensive parsing -> atomic cache write; on any failure no cache write (LKG + fast-retry), always exit 0
         Some("--refresh") => {
-            // 清理孤儿 tmp（既往 refresh 在写 tmp 与 rename 之间被杀的残留）；
-            // 阈值 60s：在途 refresh 的 tmp 存活期 <1s，不会误删
+            // Clean up orphan tmps (leftovers from earlier refreshes killed between writing tmp and rename);
+            // threshold 60s: an in-flight refresh's tmp lives <1s, so it is never mistakenly deleted
             if let Some(kimi) = credentials::kimi_home() {
                 cache::cleanup_stale_tmps_at(
                     &cache::cache_path(&kimi),
@@ -46,27 +46,27 @@ fn main() {
                 let _ = cache::write_cache_atomic_at(&cache::cache_path(&kimi), &result);
             }
         }
-        // 自检模式（SPEC §4.3）：完整取数一次，pretty JSON（2 空格缩进
-        // camelCase）打印到 stdout，不读 stdin、不写缓存
+        // Self-check mode (SPEC §4.3): one full fetch, printed to stdout as pretty JSON (2-space
+        // indent camelCase), no stdin read, no cache write
         Some("--test-fetch") => {
             let r = quota::fetch(cfg.base_url.as_deref(), cfg.http_timeout_seconds);
             println!("{}", r.to_pretty_json());
         }
-        // 渲染模式（SPEC §4.1）
+        // Render mode (SPEC §4.1)
         _ => {
-            // 步骤 1：stdin 读到 EOF 再解析；非法按空 payload
+            // Step 1: read stdin to EOF then parse; invalid input treated as empty payload
             let mut buf = Vec::new();
             let _ = std::io::Read::read_to_end(&mut std::io::stdin(), &mut buf);
             let payload = render::payload_from_bytes(&buf);
 
-            // 步骤 2–3：缓存判定（age >= TTL -> 回拨 mtime + 派生 detached --refresh）
+            // Steps 2-3: cache freshness check (age >= TTL -> rewind mtime + spawn detached --refresh)
             let cached = credentials::kimi_home().and_then(|kimi| {
                 cache::refresh_if_stale(&kimi, cfg.ttl_seconds, cfg.retry_seconds, || {
                     let _ = console::spawn_detached_refresh();
                 })
             });
 
-            // 步骤 4：thinking 段（开关关闭时跳过 config.toml 读取，省 IO）
+            // Step 4: thinking segment (skips the config.toml read when the switch is off, saves IO)
             let thinking = if cfg.order.contains(&config::Field::Thinking) {
                 render::thinking_from_config(
                     config_toml_text().as_deref(),
@@ -76,8 +76,8 @@ fn main() {
                 None
             };
 
-            // 宽度感知降级（§7.5）+ 行拼接（§7.4）；kimi_home 供 tasks 徽章
-            // 计数（§7.7，order 含 "tasks" 时扫描一次，v1.5）
+            // Width-aware degradation (§7.5) + line assembly (§7.4); kimi_home is for tasks badge
+            // counting (§7.7, one scan when order contains "tasks", v1.5)
             let line = render::render_line(
                 &payload,
                 cached.as_ref(),
@@ -88,7 +88,7 @@ fn main() {
                 credentials::kimi_home().as_deref(),
             );
 
-            // 输出恰一行 + \n，stdout 强制 UTF-8 字节（§7.6），任何情况 exit 0
+            // Output exactly one line + \n, stdout forced to UTF-8 bytes (§7.6), exit 0 in every case
             let stdout = std::io::stdout();
             let mut lock = stdout.lock();
             let _ = lock.write_all(line.as_bytes());
@@ -96,7 +96,7 @@ fn main() {
             let _ = lock.flush();
         }
     }
-    // 渲染模式任何情况下 exit 0（SPEC §3.2）；其余模式同样以退出码 0 结束
-    //（失败语义由"缓存未更新"/"error 字段"表达，SPEC §4.2/§4.3）。
+    // Render mode exits 0 in every case (SPEC §3.2); other modes likewise end with exit code 0
+    // (failure is expressed via "cache not updated"/"error field", SPEC §4.2/§4.3).
     std::process::exit(0);
 }

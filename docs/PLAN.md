@@ -8,6 +8,10 @@
 - 工程布局决策（SPEC 未规定，本计划定为如下，可调整）：cargo 工程 = 本仓库根，即 `Cargo.toml`、`.cargo/config.toml`、`src/*.rs`、`tests/golden.rs`、`testdata/golden/`（本项目新增 golden 用，绝不回写 `repos/` 下参考仓库）
 - 参考资产路径勘误：golden 矩阵实际位于 `repos/kimi-planbar-tui/go/testdata/golden/`（30 个 `quota-*.txt`，本计划撰写时已 `ls | grep -c` 核实为 30）；`repos/kimi-planbar/go/testdata/golden/` 不存在（SPEC §2.3 勘误 1）
 
+> **English abstract** — This is the phased implementation plan for quota-status, a Rust statusline command for the Kimi Code CLI that displays Kimi For Coding quota (5h/week/month plus reset times). It defines stages P0-P5 (project skeleton, core logic port, cache and refresh process model, rendering and config, golden parity tests, build delivery) plus two appended iterations, P6 (monochrome render switch) and P7 (tasks/agents badges). All stages have been delivered and accepted: P0-P5 on 2026-10-01 (including a third-round code review with all findings fixed) and P6/P7 on 2026-10-02 (each independently reviewed, with real-TUI acceptance). The task lists and acceptance criteria below are kept as originally written rather than checked off; SPEC v1.5.1 is the authoritative contract and prevails on any conflict.
+>
+> *Note: internal development document written in Chinese; the Chinese body below is authoritative and is not fully translated.*
+
 ## 阶段总览
 
 | 阶段 | 名称 | 核心产出 | 依赖 |

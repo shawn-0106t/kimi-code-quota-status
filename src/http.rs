@@ -1,15 +1,15 @@
-// 共享 HTTP client（OnceLock 单例，语义移植自 repos/kimi-planbar-tui http.rs
-// 的"OnceLock 共享 client"）。ureq 3 的 Agent 构建不可失败，故原实现
-// "构建失败降级 None" 的路径在本 client 下不存在。
-// 超时按决策清单定 8s（SPEC §5.1；参考实现原值 10s）。
+// Shared HTTP client (OnceLock singleton, semantics ported from repos/kimi-planbar-tui http.rs's
+// "OnceLock shared client"). ureq 3's Agent construction cannot fail, so the original
+// "construction-failure degrades to None" path does not exist in this client.
+// Timeout set to 8s per the decision list (SPEC §5.1; the reference implementation used 10s).
 
 use std::sync::OnceLock;
 use std::time::Duration;
 use ureq::Agent;
 
-/// 进程内 OnceLock 单例：**仅首次调用的 timeout 生效**，后续传参静默忽略。
-/// 当前每进程只在 quota::fetch 调用一次（--refresh/--test-fetch 单次取数），
-/// 无实际影响；渲染模式不取数、不触碰本 client。
+/// In-process OnceLock singleton: **only the first call's timeout takes effect**, later arguments are silently ignored.
+/// Currently called only once per process, from quota::fetch (--refresh/--test-fetch single fetch),
+/// so no practical impact; render mode does no fetching and never touches this client.
 pub(crate) fn shared_client(timeout: Duration) -> &'static Agent {
     static CLIENT: OnceLock<Agent> = OnceLock::new();
     CLIENT.get_or_init(|| {

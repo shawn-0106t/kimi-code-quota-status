@@ -1,9 +1,10 @@
-// 缓存层（SPEC §4.2/§4.4/§5.3）：渲染路径只读本地缓存，缓存过期时回拨
-// mtime 后派生 detached --refresh 回填。任何失败保留 LKG（SPEC §9）。
+// Cache layer (SPEC §4.2/§4.4/§5.3): the render path only reads the local cache;
+// when stale, rewind mtime and spawn a detached --refresh child process to
+// backfill. Any failure keeps LKG (SPEC §9).
 //
-// 路径：<kimi_home>/cache/quota-status.json（随 KIMI_CODE_HOME 联动）。
-// 原子写：同目录 .tmp + fs::rename（Windows std rename 带
-// MOVEFILE_REPLACE_EXISTING，语义同 os.replace）。
+// Path: <kimi_home>/cache/quota-status.json (follows KIMI_CODE_HOME).
+// Atomic write: same-directory .tmp + fs::rename (Windows std rename sets
+// MOVEFILE_REPLACE_EXISTING, same semantics as os.replace).
 
 use crate::quota::QuotaResult;
 use filetime::{FileTime, set_file_mtime};
@@ -12,24 +13,24 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-/// 内置默认 TTL（SPEC §5.3；P3 接入 quota-bar.toml [cache] 覆盖）
+/// Built-in default TTL (SPEC §5.3; overridable via quota-bar.toml [cache] since P3)
 pub const DEFAULT_TTL_SECS: u64 = 60;
-/// fast-retry 间隔（SPEC §4.4；P3 接入 [cache] retry_seconds 覆盖）
+/// fast-retry interval (SPEC §4.4; overridable via [cache] retry_seconds since P3)
 pub const DEFAULT_RETRY_SECS: u64 = 30;
 
 pub fn cache_path(kimi: &Path) -> PathBuf {
     kimi.join("cache").join("quota-status.json")
 }
 
-/// 读缓存：JSON 非法/缺失 -> None（当缺失处理，SPEC §9）。
+/// Read the cache: invalid/missing JSON -> None (treated as missing, SPEC §9).
 pub fn read_cache_at(path: &Path) -> Option<QuotaResult> {
     let text = fs::read_to_string(path).ok()?;
     serde_json::from_str(&text).ok()
 }
 
-/// 原子写（SPEC §4.2 步骤 4）：mkdir -p -> 写 .tmp（带 PID 后缀，消除并发
-/// refresh 交错写同一 tmp 的竞态窗口）-> rename 替换。
-/// rename 失败重试一次（防病毒扫描等瞬时占用）；仍失败保留旧缓存。
+/// Atomic write (SPEC §4.2 step 4): mkdir -p -> write .tmp (with a PID suffix to
+/// remove the race of concurrent refreshes writing the same tmp) -> rename. Retry
+/// once on rename failure (e.g. AV-scan holds); if it still fails, keep the old cache.
 pub fn write_cache_atomic_at(path: &Path, result: &QuotaResult) -> io::Result<()> {
     let dir = path
         .parent()
@@ -40,13 +41,13 @@ pub fn write_cache_atomic_at(path: &Path, result: &QuotaResult) -> io::Result<()
     fs::write(&tmp, text)?;
     match fs::rename(&tmp, path) {
         Ok(()) => Ok(()),
-        Err(_) => fs::rename(&tmp, path), // 重试一次；仍失败保留旧缓存
+        Err(_) => fs::rename(&tmp, path), // retry once; if it still fails, keep the old cache
     }
 }
 
-/// 清理孤儿 tmp（SPEC §4.2 原子写的副产物）：refresh 进程在写 tmp 与 rename
-/// 之间被杀时，`quota-status.json.<pid>.tmp` 无属主残留。仅清理 mtime 早于
-/// older_than 的文件——在途 refresh 的 tmp 存活期 <1s，不会被误删。
+/// Clean up orphan tmps (a byproduct of the SPEC §4.2 atomic write): when a refresh
+/// process is killed between writing tmp and rename, `quota-status.json.<pid>.tmp`
+/// lingers ownerless. Only mtime-older-than-older_than files are removed (in-flight tmps live <1s).
 pub fn cleanup_stale_tmps_at(path: &Path, older_than: Duration) {
     let Some(dir) = path.parent() else { return };
     let Some(base) = path.file_name().and_then(|n| n.to_str()) else {
@@ -74,16 +75,16 @@ pub fn cleanup_stale_tmps_at(path: &Path, older_than: Duration) {
     }
 }
 
-/// 缓存文件年龄；缺失/不可读 -> None（视为过期）。
+/// Cache file age; missing/unreadable -> None (treated as expired).
 pub fn cache_age(path: &Path) -> Option<Duration> {
     let mtime = fs::metadata(path).ok()?.modified().ok()?;
-    // mtime 在未来（时钟回拨等）时 duration_since 返回 Err -> None，
-    // 调用方按过期处理：回拨锚点即自愈（不 panic）
+    // when mtime is in the future (e.g. clock rewind), duration_since returns Err -> None,
+    // the caller treats it as expired: rewinding the anchor self-heals (no panic)
     SystemTime::now().duration_since(mtime).ok()
 }
 
-/// mtime 回拨目标（SPEC §4.4）：now - TTL + retry（= now - (TTL - retry)），
-/// 使后续渲染 retry 秒内看到"未过期"。retry >= TTL 时退化回拨 1s（不 panic）。
+/// mtime rewind target (SPEC §4.4): now - TTL + retry (= now - (TTL - retry)),
+/// so later renders see "not stale" for retry seconds. retry >= TTL degrades to a 1s rewind (no panic).
 fn rollback_target(now: SystemTime, ttl_secs: u64, retry_secs: u64) -> SystemTime {
     match now.checked_sub(Duration::from_secs(ttl_secs.saturating_sub(retry_secs))) {
         Some(t) if retry_secs < ttl_secs => t,
@@ -91,7 +92,7 @@ fn rollback_target(now: SystemTime, ttl_secs: u64, retry_secs: u64) -> SystemTim
     }
 }
 
-/// 把 mtime 回拨为 now - TTL + retry（Windows SetFileTime，filetime crate）。
+/// Rewind mtime to now - TTL + retry (Windows SetFileTime, via the filetime crate).
 fn rollback_mtime_at(path: &Path, ttl_secs: u64, retry_secs: u64) -> io::Result<()> {
     set_file_mtime(
         path,
@@ -99,9 +100,9 @@ fn rollback_mtime_at(path: &Path, ttl_secs: u64, retry_secs: u64) -> io::Result<
     )
 }
 
-/// 缺失时创建空缓存文件锚定 mtime（SPEC §5.3/§9；Python 原型 'a' 打开同义）。
-/// create_new 原子语义：文件已存在（含并发 refresh 恰好 rename 落盘）直接
-/// Ok 返回，绝不截断已有内容（消除 exists() 后 create 的 TOCTOU 窗口）。
+/// When missing, create an empty cache file to anchor mtime (SPEC §5.3/§9; same
+/// as the Python prototype's 'a' open). create_new atomic semantics: an existing
+/// file (incl. a concurrent refresh's landed rename) returns Ok; never truncates (no TOCTOU window).
 fn ensure_anchor_at(path: &Path) -> io::Result<()> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
@@ -117,13 +118,13 @@ fn ensure_anchor_at(path: &Path) -> io::Result<()> {
     }
 }
 
-/// 渲染模式数据层步骤（SPEC §4.1 步骤 2–3、§4.4、§9）：
-/// 1. 读缓存（损坏当缺失：额度组省略，不清空不阻塞）；
-/// 2. age >= TTL（含文件缺失）-> 缺失先建空锚定文件 -> 回拨 mtime -> 派生刷新；
-/// 3. 回拨失败跳过派生本轮（宁可晚一轮刷新，不 panic）。
+/// Data-layer steps in render mode (SPEC §4.1 steps 2-3, §4.4, §9):
+/// 1. Read the cache (corrupt treated as missing: quota groups omitted, no wipe, no blocking);
+/// 2. age >= TTL (incl. missing file) -> create an empty anchor if missing -> rewind mtime -> spawn refresh;
+/// 3. A rewind failure skips the spawn this round (a late refresh beats a panic).
 ///
-/// `spawn_refresh` 为派生动作（生产传 detached spawn，测试传 mock）；
-/// 返回值供渲染使用（过期/缺失/损坏时可能为 None，其余字段照常渲染）。
+/// `spawn_refresh` is the spawn action (production passes a detached spawn, tests a mock);
+/// the return value feeds rendering (None possible when stale/missing/corrupt; other fields render as usual).
 pub fn refresh_if_stale<F: FnOnce()>(
     kimi: &Path,
     ttl_secs: u64,
@@ -133,21 +134,21 @@ pub fn refresh_if_stale<F: FnOnce()>(
     let path = cache_path(kimi);
     let cached = read_cache_at(&path);
     let age = cache_age(&path);
-    // 新鲜判定只看 mtime（SPEC §4.1 步骤 3/§4.4 纯 age 语义，Python 原型
-    // maybe_refresh 同款）：age < TTL 即不派生——空锚定、损坏缓存、refresh
-    // 持续失败（无 token / 404）时回拨后的 mtime 同样压住风暴，retry 秒后
-    // 自然重试；若把"可解析"相与进来，上述场景每次渲染都会派生进程
+    // Freshness is judged on mtime alone (SPEC §4.1 step 3/§4.4 pure-age semantics,
+    // like the Python prototype's maybe_refresh): age < TTL -> no spawn. With an
+    // empty anchor, corrupt cache, or persistently failing refresh (no token / 404),
+    // the rewound mtime still suppresses the herd (retry after retry secs); adding "parseable" to the check would spawn on every render.
     if let Some(a) = age
         && a < Duration::from_secs(ttl_secs)
     {
         return cached;
     }
-    // 过期或缺失：先锚定（仅缺失时创建），再回拨，回拨成功才派生
+    // stale or missing: anchor first (create only when missing), then rewind; spawn only if rewind succeeds
     if ensure_anchor_at(&path).is_err() {
-        return cached; // 锚定失败（目录不可写等）：放弃本轮刷新
+        return cached; // anchor failed (e.g. unwritable directory): give up this round's refresh
     }
     if rollback_mtime_at(&path, ttl_secs, retry_secs).is_err() {
-        return cached; // 回拨失败：跳过派生，避免刷新风暴
+        return cached; // rewind failed: skip spawning, avoiding a refresh thundering herd
     }
     spawn_refresh();
     cached
@@ -186,7 +187,7 @@ mod tests {
         }
     }
 
-    /// 每个测试独享临时目录（env 全局可变，不通过 KIMI_CODE_HOME 隔离）。
+    /// Each test gets its own temp directory (env is global mutable state, not isolated via KIMI_CODE_HOME).
     fn temp_kimi(tag: &str) -> PathBuf {
         let dir =
             std::env::temp_dir().join(format!("quota-status-test-{}-{}", tag, std::process::id()));
@@ -195,7 +196,7 @@ mod tests {
         dir
     }
 
-    /// 回拨计算单测：target = now - TTL + retry（SPEC §4.4 / PLAN P2 单测清单）。
+    /// Unit test for the rewind computation: target = now - TTL + retry (SPEC §4.4 / PLAN P2 test list).
     #[test]
     fn rollback_target_is_now_minus_ttl_plus_retry() {
         let now = SystemTime::now();
@@ -204,12 +205,12 @@ mod tests {
         assert!(got.duration_since(want).unwrap_or_default() < Duration::from_millis(5));
         assert!(want.duration_since(got).unwrap_or_default() < Duration::from_millis(5));
 
-        // retry >= TTL：退化回拨 1s，不 panic
+        // retry >= TTL: degrades to a 1s rewind, no panic
         let got = rollback_target(now, 30, 60);
         assert!(got < now);
     }
 
-    /// 原子写后内容可 round-trip 解析（PLAN P2 单测清单）。
+    /// Content written atomically round-trips through parsing (PLAN P2 test list).
     #[test]
     fn atomic_write_round_trip() {
         let kimi = temp_kimi("round-trip");
@@ -222,14 +223,14 @@ mod tests {
         assert_eq!(back.extra.as_ref().unwrap().balance_cents, Some(1235));
         assert_eq!(back.fetched_at, data.fetched_at);
         assert!(back.error.is_none());
-        // tmp 文件（带 PID 后缀）已被 rename 消费，不残留
+        // the tmp file (with PID suffix) was consumed by the rename, nothing left behind
         let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
         assert!(!tmp.exists());
         fs::remove_dir_all(&kimi).unwrap();
     }
 
-    /// 缓存损坏当缺失（SPEC §9）：额度组省略、垃圾内容不清空；派生与否只看
-    /// mtime（§4.4 纯 age 语义）——新鲜损坏文件不派生，过期才回拨 + 派生。
+    /// Corrupt cache treated as missing (SPEC §9): quota groups omitted, garbage content kept;
+    /// spawn depends on mtime alone (§4.4 pure-age) — fresh corrupt does not spawn, stale does (rewind + spawn).
     #[test]
     fn corrupt_cache_treated_as_missing() {
         let kimi = temp_kimi("corrupt");
@@ -238,14 +239,21 @@ mod tests {
         fs::write(&path, "{not valid json").unwrap();
         let before = fs::read(&path).unwrap();
 
-        // 损坏但新鲜（mtime≈now < TTL）：不派生，返回 None，内容原样
+        // corrupt but fresh (mtime ~= now < TTL): no spawn, returns None, content intact
         let mut spawns = 0;
         let got = refresh_if_stale(&kimi, 60, 30, || spawns += 1);
         assert!(got.is_none());
-        assert_eq!(spawns, 0, "新鲜损坏缓存不派生（纯 mtime 判定）");
-        assert_eq!(fs::read(&path).unwrap(), before, "LKG 垃圾内容不被清空");
+        assert_eq!(
+            spawns, 0,
+            "fresh corrupt cache does not spawn (pure mtime check)"
+        );
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            before,
+            "LKG garbage content is not wiped"
+        );
 
-        // 损坏且过期：回拨 + 派生一次；紧接着的渲染被回拨后的 mtime 压住
+        // corrupt and stale: rewind + spawn once; the very next render is suppressed by the rewound mtime
         let stale = SystemTime::now() - Duration::from_secs(60);
         set_file_mtime(&path, FileTime::from_system_time(stale)).unwrap();
         let mut spawns = 0;
@@ -256,13 +264,16 @@ mod tests {
         assert!((29..=31).contains(&age), "age after rollback = {age}");
         let got = refresh_if_stale(&kimi, 60, 30, || spawns += 1);
         assert!(got.is_none());
-        assert_eq!(spawns, 1, "回拨后 30s 内连续渲染只派生一次（§4.4 防风暴）");
+        assert_eq!(
+            spawns, 1,
+            "consecutive renders within 30s after rewind spawn only once (§4.4 thundering-herd protection)"
+        );
         fs::remove_dir_all(&kimi).unwrap();
     }
 
-    /// 缓存缺失：创建空锚定文件 + 派生一次（SPEC §5.3）；回拨后的空锚定
-    /// 压住后续渲染（§4.4）——refresh 持续失败（无 token / 404）也不会
-    /// 每次渲染都派生进程。
+    /// Missing cache: create an empty anchor file + spawn once (SPEC §5.3); the
+    /// rewound empty anchor suppresses later renders (§4.4) — even a persistently
+    /// failing refresh (no token / 404) does not spawn a process on every render.
     #[test]
     fn missing_cache_creates_anchor_and_spawns() {
         let kimi = temp_kimi("missing");
@@ -271,16 +282,19 @@ mod tests {
         let got = refresh_if_stale(&kimi, 60, 30, || spawns += 1);
         assert!(got.is_none());
         assert_eq!(spawns, 1);
-        assert!(path.exists(), "锚定文件已创建");
-        // 连续第二次渲染：age≈TTL-retry < TTL，不重复派生
+        assert!(path.exists(), "anchor file created");
+        // second consecutive render: age ~= TTL-retry < TTL, no duplicate spawn
         let got = refresh_if_stale(&kimi, 60, 30, || spawns += 1);
         assert!(got.is_none());
-        assert_eq!(spawns, 1, "连续渲染只派生一次（§4.4 防风暴）");
+        assert_eq!(
+            spawns, 1,
+            "consecutive renders spawn only once (§4.4 thundering-herd protection)"
+        );
         fs::remove_dir_all(&kimi).unwrap();
     }
 
-    /// TTL 过期边界（PLAN P2 单测清单）：age == TTL 触发派生；
-    /// age < TTL（含回拨后的 TTL-retry）不派生且返回数据。
+    /// TTL expiry boundary (PLAN P2 test list): age == TTL triggers a spawn;
+    /// age < TTL (incl. the post-rewind TTL-retry) does not spawn and returns data.
     #[test]
     fn ttl_expiry_boundary() {
         let kimi = temp_kimi("ttl");
@@ -288,18 +302,21 @@ mod tests {
         let data = test_result();
         write_cache_atomic_at(&path, &data).unwrap();
 
-        // age == TTL -> 过期，派生
+        // age == TTL -> stale, spawn
         let stale = SystemTime::now() - Duration::from_secs(60);
         set_file_mtime(&path, FileTime::from_system_time(stale)).unwrap();
         let mut spawns = 0;
         let got = refresh_if_stale(&kimi, 60, 30, || spawns += 1);
-        assert!(got.is_some(), "过期仍返回旧数据（LKG 继续渲染）");
+        assert!(
+            got.is_some(),
+            "stale still returns old data (LKG keeps rendering)"
+        );
         assert_eq!(spawns, 1);
-        // 回拨后 mtime age ≈ 30，落在 retry 窗口内
+        // after rewind, mtime age ~= 30, within the retry window
         let age = cache_age(&path).unwrap().as_secs();
         assert!((29..=31).contains(&age), "age after rollback = {age}");
 
-        // age < TTL -> 新鲜，不派生
+        // age < TTL -> fresh, no spawn
         set_file_mtime(
             &path,
             FileTime::from_system_time(SystemTime::now() - Duration::from_secs(59)),
@@ -308,14 +325,14 @@ mod tests {
         let mut spawns = 0;
         let got = refresh_if_stale(&kimi, 60, 30, || spawns += 1);
         assert!(got.is_some());
-        assert_eq!(spawns, 0, "新鲜缓存不派生");
+        assert_eq!(spawns, 0, "fresh cache does not spawn");
         fs::remove_dir_all(&kimi).unwrap();
     }
 
-    /// 锚定绝不截断已有文件（create_new 原子语义）：并发 refresh 恰好 rename
-    /// 落盘后，渲染侧的锚定尝试不会把新缓存截断为空。
-    /// 注：TOCTOU 竞态窗口无法确定性复现，本测试钉死的是 create_new 的
-    /// 不截断不变量（characterization test），非竞态回归测试。
+    /// Anchoring never truncates an existing file (create_new atomic semantics):
+    /// after a concurrent refresh's rename lands, the render-side anchor attempt
+    /// must not truncate the new cache to empty. Note: the TOCTOU race window is not
+    /// deterministically reproducible; this pins the no-truncate invariant (characterization test, not a race regression test).
     #[test]
     fn anchor_never_truncates_existing() {
         let kimi = temp_kimi("anchor");
@@ -327,7 +344,7 @@ mod tests {
         fs::remove_dir_all(&kimi).unwrap();
     }
 
-    /// 孤儿 tmp 清理：老 tmp 删除；在途（新鲜）tmp 与非 tmp 文件保留。
+    /// Orphan tmp cleanup: old tmps deleted; in-flight (fresh) tmps and non-tmp files kept.
     #[test]
     fn cleanup_stale_tmps_removes_only_old_tmps() {
         let kimi = temp_kimi("tmps");
@@ -343,9 +360,9 @@ mod tests {
         set_file_mtime(&old_tmp, FileTime::from_system_time(old)).unwrap();
 
         cleanup_stale_tmps_at(&path, Duration::from_secs(60));
-        assert!(!old_tmp.exists(), "老孤儿 tmp 被清理");
-        assert!(fresh_tmp.exists(), "在途 tmp 不误删");
-        assert!(other.exists(), "非 tmp 文件不动");
+        assert!(!old_tmp.exists(), "old orphan tmp cleaned up");
+        assert!(fresh_tmp.exists(), "in-flight tmp not wrongly deleted");
+        assert!(other.exists(), "non-tmp file untouched");
         fs::remove_dir_all(&kimi).unwrap();
     }
 }

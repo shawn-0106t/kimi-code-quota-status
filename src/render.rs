@@ -1,8 +1,8 @@
-// 渲染模块（SPEC §7）：stdin 快照 + 本地缓存 -> 拼一行带 ANSI 颜色的文本。
-// 顺序：permissionMode -> model -> thinking -> tasks/agents 徽章 ->
-// 额度组(5h/week/month) -> gitBranch；每段"有值才显示"，段间灰色 |，额度组内
-// 灰色 ·。宽度感知降级（§7.5）：丢 reset 后缀 -> 丢 gitBranch -> 只留额度组 ->
-// 原样输出。
+// Render module (SPEC §7): stdin snapshot + local cache -> assemble one line of ANSI-colored text.
+// Order: permissionMode -> model -> thinking -> tasks/agents badges ->
+// quota group (5h/week/month) -> gitBranch; each segment is shown only when non-empty; gray | between
+// segments, gray · within the quota group. Width-aware degradation (§7.5): drop reset suffix -> drop
+// gitBranch -> keep only the quota group -> output as-is.
 
 use crate::config::{Config, Field};
 use crate::quota::{ExtraState, QuotaResult};
@@ -12,8 +12,8 @@ use serde_json::Value;
 use std::path::Path;
 
 const RESET: &str = "\x1b[0m";
-const SEP_SEG: &str = " \x1b[90m|\x1b[0m "; // 段间分隔符（灰 |）
-const SEP_PART: &str = " \x1b[90m·\x1b[0m "; // 额度组内分隔符（灰 ·）
+const SEP_SEG: &str = " \x1b[90m|\x1b[0m "; // segment separator (gray |)
+const SEP_PART: &str = " \x1b[90m·\x1b[0m "; // separator within the quota group (gray ·)
 const GRAY: &str = "90";
 const CYAN: &str = "36";
 const GREEN: &str = "32";
@@ -22,26 +22,26 @@ const RED: &str = "31";
 const MAGENTA: &str = "35";
 const WHITE: &str = "37";
 
-/// thinking 段取值结果（config.toml 阶梯输出，SPEC §7.1）
+/// thinking segment value result (config.toml ladder output, SPEC §7.1)
 #[derive(Debug, PartialEq)]
 pub enum Thinking {
     Off,
     Effort(String),
 }
 
-/// stdin 字节 -> payload Value：先 lossy UTF-8（U+FFFD，SPEC §7.6）再解析；
-/// 解析失败按空 payload（Value::Null，语义同 quota-status.py:177-181）。
+/// stdin bytes -> payload Value: first lossy UTF-8 (U+FFFD, SPEC §7.6), then parse;
+/// on parse failure, treat as an empty payload (Value::Null, same semantics as quota-status.py:177-181).
 pub fn payload_from_bytes(bytes: &[u8]) -> Value {
     let text = String::from_utf8_lossy(bytes);
     serde_json::from_str(&text).unwrap_or(Value::Null)
 }
 
-/// thinking 阶梯（SPEC §7.1，语义同 quota-status.py:101-119）：
-/// 1. [thinking] enabled == false（严格布尔）-> 灰 off；
-/// 2. 否则 [thinking] effort（非空字符串）；
-/// 3. 缺失 -> [models.*] 中 display_name 或 model 匹配 stdin model 的条目，
-///    取 overrides.default_effort，再退 default_effort；
-/// 4. 都取不到 -> None（该段省略）。
+/// thinking ladder (SPEC §7.1, same semantics as quota-status.py:101-119):
+/// 1. [thinking] enabled == false (strict boolean) -> gray off;
+/// 2. otherwise [thinking] effort (non-empty string);
+/// 3. missing -> the entry in [models.*] whose display_name or model matches the stdin model,
+///    take overrides.default_effort, then fall back to default_effort;
+/// 4. none obtainable -> None (segment omitted).
 pub fn thinking_from_config(config_text: Option<&str>, model: Option<&str>) -> Option<Thinking> {
     let text = config_text?;
     let Ok(val) = toml::from_str::<toml::Value>(text) else {
@@ -80,8 +80,8 @@ pub fn thinking_from_config(config_text: Option<&str>, model: Option<&str>) -> O
     None
 }
 
-/// 额度段颜色（SPEC §7.2）：percent < green_below 绿 / < yellow_below 黄 / 否则红。
-/// 边界 `>= 85` 红、`>= 60` 黄（阈值默认 60/85）。
+/// Quota segment color (SPEC §7.2): percent < green_below green / < yellow_below yellow / otherwise red.
+/// Boundaries: `>= 85` red, `>= 60` yellow (thresholds default to 60/85).
 pub fn quota_color(percent: f64, green_below: f64, yellow_below: f64) -> &'static str {
     if percent < green_below {
         GREEN
@@ -92,8 +92,8 @@ pub fn quota_color(percent: f64, green_below: f64, yellow_below: f64) -> &'stati
     }
 }
 
-/// reset 后缀（SPEC §7.3）：同日 ` (rst HH:MM)`；跨天 ` (rst MM/DD HH:MM)`。
-/// 本地时区；resetAt 解析失败/缺失 -> None（无后缀）。
+/// reset suffix (SPEC §7.3): same day ` (rst HH:MM)`; cross-day ` (rst MM/DD HH:MM)`.
+/// Local time zone; resetAt parse failure/missing -> None (no suffix).
 pub fn reset_suffix(reset_at: Option<&DateTime<Local>>, now: DateTime<Local>) -> Option<String> {
     let dt = *reset_at?;
     let same_day = dt.date_naive() == now.date_naive();
@@ -113,7 +113,7 @@ fn permission_mode_color(mode: &str) -> &'static str {
     }
 }
 
-/// percent 按整行格式化（%.0f = round-half-to-even，SPEC §7.3）
+/// percent formatted to a whole number (%.0f = round-half-to-even, SPEC §7.3)
 fn fmt_percent(p: f64) -> String {
     format!("{p:.0}")
 }
@@ -124,8 +124,8 @@ struct QuotaPart {
     reset_at: Option<DateTime<Local>>,
 }
 
-/// 额度组缓存侧取数（SPEC §7.1）：对应段存在且开启才进组；
-/// 缓存含 error（理论不发生，防御）视为无数据。
+/// Quota group cache-side data (SPEC §7.1): a segment joins the group only if present and enabled;
+/// a cache containing error (theoretically impossible, defensive) is treated as no data.
 fn quota_parts(cached: Option<&QuotaResult>, cfg: &Config) -> Vec<QuotaPart> {
     let Some(r) = cached.filter(|r| r.error.is_none()) else {
         return Vec::new();
@@ -161,9 +161,9 @@ fn quota_parts(cached: Option<&QuotaResult>, cfg: &Config) -> Vec<QuotaPart> {
     parts
 }
 
-/// 行拼接（SPEC §7.4）。`opts` 控制降级变体：
-/// reset=false 丢所有 reset 后缀；git=false 丢 gitBranch 段；
-/// quota_only=true 只留额度组。只删不重排。
+/// Line assembly (SPEC §7.4). `opts` controls the degradation variants:
+/// reset=false drops all reset suffixes; git=false drops the gitBranch segment;
+/// quota_only=true keeps only the quota group. Removal only, no reordering.
 struct VariantOpts {
     reset: bool,
     git: bool,
@@ -180,9 +180,9 @@ fn render_variant(
     opts: &VariantOpts,
 ) -> String {
     let mut segs: Vec<String> = Vec::new();
-    // 单色开关（SPEC §7.2 v1.4）：colors=false 时输出纯文本（无任何 SGR），
-    // 宿主 footer.ts:318 的 chalk.hex(colors.text) 包装把整行染为主题 text 色
-    //（与第 2 行 context 同色，随 /theme 联动）；分隔符为纯字符
+    // Monochrome switch (SPEC §7.2 v1.4): when colors=false, output plain text (no SGR at all);
+    // the host's footer.ts:318 chalk.hex(colors.text) wrapper tints the whole line with the theme text
+    // color (same as the context on line 2, follows /theme); separators are plain characters
     let colors_on = cfg.colors;
     let span = |color: &str, text: &str| {
         if colors_on {
@@ -193,8 +193,8 @@ fn render_variant(
     };
     let sep_seg = if colors_on { SEP_SEG } else { " | " };
     let sep_part = if colors_on { SEP_PART } else { " · " };
-    // 按配置 order 迭代（重排生效）；quota_only 只处理额度组；
-    // 降级丢 gitBranch 只删不重排
+    // Iterate over the configured order (reordering takes effect); quota_only processes only the
+    // quota group; degradation dropping gitBranch removes only, no reordering
     for field in &cfg.order {
         if opts.quota_only && *field != Field::Quota {
             continue;
@@ -214,15 +214,15 @@ fn render_variant(
                     segs.push(span(CYAN, model));
                 }
             }
-            // thinking（off 灰 / effort cyan，SPEC §7.2）
+            // thinking (off gray / effort cyan, SPEC §7.2)
             Field::Thinking => match thinking {
                 Some(Thinking::Off) => segs.push(span(GRAY, "off")),
                 Some(Thinking::Effort(eff)) => segs.push(span(CYAN, eff)),
                 None => {}
             },
-            // tasks/agents 徽章（SPEC §7.1/§7.7 v1.5）：段文本复刻宿主原生
-            // footer 徽章（footer.ts:483-494），单复数按计数；两徽章以单个
-            // 空格连接构成本段，皆零整段省略；cyan 36（§7.2）
+            // tasks/agents badges (SPEC §7.1/§7.7 v1.5): the segment text replicates the host's
+            // native footer badges (footer.ts:483-494), singular/plural by count; the two badges
+            // are joined by a single space into this segment; when both are zero it is omitted; cyan 36 (§7.2)
             Field::Tasks => {
                 let mut badges: Vec<String> = Vec::new();
                 if tasks.bash > 0 {
@@ -237,7 +237,7 @@ fn render_variant(
                     segs.push(badges.join(" "));
                 }
             }
-            // 额度组（组内灰 · 连接，SPEC §7.3）
+            // quota group (parts joined by gray · within the group, SPEC §7.3)
             Field::Quota => {
                 let mut parts: Vec<String> = Vec::new();
                 for p in quota_parts(cached, cfg) {
@@ -252,9 +252,9 @@ fn render_variant(
                         &format!("{} {}%{}", p.label, fmt_percent(p.percent), reset),
                     ));
                 }
-                // booster 默认不渲染（SPEC §1.2/§7.1）；开启且 Ready 时以 cyan
-                // 显示余额（元）。格式取纯 ASCII（避免 ¥ 等符号在非 UTF-8
-                // 终端的兼容性问题）
+                // booster is not rendered by default (SPEC §1.2/§7.1); when enabled and Ready, the
+                // balance (yuan) is shown in cyan. The format is pure ASCII (avoiding compatibility
+                // issues with symbols like ¥ on non-UTF-8 terminals)
                 if cfg.quota.booster
                     && let Some(r) = cached.filter(|r| r.error.is_none())
                     && let Some(extra) = &r.extra
@@ -281,15 +281,15 @@ fn render_variant(
     segs.join(sep_seg)
 }
 
-/// 可见宽度：剔除 ANSI 转义序列后按字符数近似（SPEC §7.4；
-/// 字段以 ASCII 为主，最终由宿主 truncateToWidth 兜底）。
+/// Visible width: approximated by character count after stripping ANSI escape sequences (SPEC §7.4;
+/// fields are mostly ASCII, with the host's truncateToWidth as the final fallback).
 pub fn visible_width(line: &str) -> usize {
     let mut width = 0usize;
     let mut chars = line.chars().peekable();
     while let Some(c) = chars.next() {
         if c == '\x1b' && chars.peek() == Some(&'[') {
             chars.next();
-            // 消费到 'm'（我们只输出 SGR 序列）
+            // consume up to 'm' (we only output SGR sequences)
             while let Some(&c2) = chars.peek() {
                 chars.next();
                 if c2 == 'm' {
@@ -303,11 +303,11 @@ pub fn visible_width(line: &str) -> usize {
     width
 }
 
-/// 宽度感知降级阶梯（SPEC §7.5）：0 全量 -> 1 丢 reset -> 2 丢 gitBranch ->
-/// 3 只留额度组 -> 4 仍超宽原样输出（交宿主截断）。
-/// `kimi_home` 供 tasks 徽章计数（SPEC §7.7）：order 含 "tasks" 时调用一次
-/// 扫描、结果传入全部 4 个降级变体（避免目录扫描被执行 4 次）；order 不含
-/// "tasks" 时跳过扫描（省 IO，SPEC §8 开关省 IO 惯例），home 缺失零计数。
+/// Width-aware degradation ladder (SPEC §7.5): 0 full -> 1 drop reset -> 2 drop gitBranch ->
+/// 3 keep only the quota group -> 4 still too wide, output as-is (leave truncation to the host).
+/// `kimi_home` feeds the tasks badge count (SPEC §7.7): when order contains "tasks", run the
+/// scan once and pass the result to all 4 degradation variants (avoiding 4 directory scans);
+/// when order lacks "tasks", skip the scan (saving IO, per the SPEC §8 switch-saves-IO convention); missing home yields zero counts.
 pub fn render_line(
     payload: &Value,
     cached: Option<&QuotaResult>,
@@ -317,8 +317,8 @@ pub fn render_line(
     now: DateTime<Local>,
     kimi_home: Option<&Path>,
 ) -> String {
-    // 计数在外层算一次（决策 D 上限内的单次扫描；sessionId 取自 payload
-    // §3.5，缺失/为空/无效时 tasks.rs 内部零计数）
+    // Counting is computed once in the outer layer (a single scan within decision D's cap; sessionId
+    // comes from payload §3.5; missing/empty/invalid yields zero counts inside tasks.rs)
     let tasks = if cfg.order.contains(&Field::Tasks) {
         let session_id = payload.get("sessionId").and_then(|v| v.as_str());
         kimi_home
@@ -328,7 +328,7 @@ pub fn render_line(
         TaskCounts::default()
     };
 
-    // 全量（reset 开关关闭则天然无后缀）；降级只删不重排
+    // Full line (no suffix by nature when the reset switch is off); degradation removes only, no reordering
     let full = render_variant(
         payload,
         cached,
@@ -382,7 +382,7 @@ pub fn render_line(
         },
     );
 
-    // 逐级尝试直到可容纳；全超 -> 原样输出（full）
+    // Try each level until one fits; if all overflow -> output as-is (full)
     for cand in [&full, &no_reset, &no_git, &quota_only] {
         if (visible_width(cand) as u32) <= width {
             return cand.clone();
@@ -437,7 +437,7 @@ mod tests {
         Local.timestamp_millis_opt(1_893_456_000_000).unwrap() // 2030-01-01 08:00 +08:00
     }
 
-    /// 颜色阈值边界（PLAN P3 单测清单）：59.x 绿 / 60 黄 / 84.x 黄 / 85 红。
+    /// Color threshold boundaries (PLAN P3 unit test list): 59.x green / 60 yellow / 84.x yellow / 85 red.
     #[test]
     fn color_threshold_boundaries() {
         assert_eq!(quota_color(59.9, 60.0, 85.0), "32");
@@ -446,7 +446,7 @@ mod tests {
         assert_eq!(quota_color(85.0, 60.0, 85.0), "31");
     }
 
-    /// percent 舍入边界（%.0f = round-half-to-even）：60.5->60、61.5->62。
+    /// percent rounding boundaries (%.0f = round-half-to-even): 60.5->60, 61.5->62.
     #[test]
     fn percent_rounds_half_to_even() {
         assert_eq!(fmt_percent(60.5), "60");
@@ -456,10 +456,10 @@ mod tests {
         assert_eq!(fmt_percent(21.0), "21");
     }
 
-    /// reset 跨天格式（PLAN P3 单测清单）：同日 HH:MM，跨天 MM/DD HH:MM。
+    /// reset cross-day format (PLAN P3 unit test list): same day HH:MM, cross day MM/DD HH:MM.
     #[test]
     fn reset_suffix_same_and_cross_day() {
-        let n = now(); // 2030-01-01 08:00 本地
+        let n = now(); // 2030-01-01 08:00 local
         let same = DateTime::parse_from_rfc3339("2030-01-01T23:30:00+08:00")
             .unwrap()
             .with_timezone(&Local);
@@ -471,8 +471,8 @@ mod tests {
         assert_eq!(reset_suffix(None, n), None);
     }
 
-    /// thinking 阶梯（PLAN P3 单测清单）：enabled=false / effort / models
-    /// 回退两级 / 全缺省略。
+    /// thinking ladder (PLAN P3 unit test list): enabled=false / effort / models
+    /// two-level fallback / all missing -> omitted.
     #[test]
     fn thinking_ladder_branches() {
         let text = r#"
@@ -493,7 +493,7 @@ overrides.default_effort = "high"
             Some(Thinking::Effort("medium".into()))
         );
 
-        // models 回退：overrides.default_effort 优先
+        // models fallback: overrides.default_effort takes priority
         let text = r#"
 [models.kimi]
 display_name = "Kimi"
@@ -505,7 +505,7 @@ default_effort = "high"
             Some(Thinking::Effort("high".into()))
         );
 
-        // models 回退：再退 default_effort
+        // models fallback: fall back further to default_effort
         let text = r#"
 [models.other]
 model = "kimi-model"
@@ -516,17 +516,17 @@ default_effort = "low"
             Some(Thinking::Effort("low".into()))
         );
 
-        // 全缺 -> 省略
+        // all missing -> omitted
         assert_eq!(
             thinking_from_config(Some("[thinking]\n"), Some("Kimi")),
             None
         );
         assert_eq!(thinking_from_config(None, Some("Kimi")), None);
-        // config.toml 整体非法 -> 省略
+        // config.toml entirely invalid -> omitted
         assert_eq!(thinking_from_config(Some("not toml"), Some("Kimi")), None);
     }
 
-    /// 行拼接（SPEC §7.4）：段序、颜色码、灰分隔符、每段重置。
+    /// Line assembly (SPEC §7.4): segment order, color codes, gray separators, per-segment reset.
     #[test]
     fn full_line_layout() {
         let cfg = Config::default();
@@ -540,33 +540,39 @@ default_effort = "low"
             now(),
             None,
         );
-        assert!(line.starts_with("\x1b[31myolo\x1b[0m"), "yolo 红: {line:?}");
+        assert!(
+            line.starts_with("\x1b[31myolo\x1b[0m"),
+            "yolo red: {line:?}"
+        );
         assert!(line.contains("\x1b[36mKimi\x1b[0m"), "model cyan");
         assert!(line.contains("\x1b[36mhigh\x1b[0m"), "thinking cyan");
-        assert!(line.contains("\x1b[32m5h 21%"), "5h 绿 + 无空格拼接");
-        assert!(line.contains("(rst 00:00)"), "同日 reset");
-        assert!(line.contains("\x1b[33mweek 68%"), "68 黄");
+        assert!(
+            line.contains("\x1b[32m5h 21%"),
+            "5h green + no-space concatenation"
+        );
+        assert!(line.contains("(rst 00:00)"), "same-day reset");
+        assert!(line.contains("\x1b[33mweek 68%"), "68 yellow");
         assert!(
             line.contains("\x1b[32mmonth 43% (rst 11/05 00:00)"),
-            "跨天 reset: {line:?}"
+            "cross-day reset: {line:?}"
         );
         assert!(line.ends_with("\x1b[35mmain\x1b[0m"), "git magenta");
         assert_eq!(
             line.matches(" \x1b[90m|\x1b[0m ").count(),
             4,
-            "段间 4 个灰 |"
+            "4 gray | between segments"
         );
         assert_eq!(
             line.matches(" \x1b[90m·\x1b[0m ").count(),
             2,
-            "组内 2 个灰 ·"
+            "2 gray · within the group"
         );
-        // 行内不含 contextTokens / maxContextTokens（SPEC §3.4）
+        // line contains no contextTokens / maxContextTokens (SPEC §3.4)
         assert!(!line.contains("context"));
     }
 
-    /// 宽度降级四级（PLAN P3 单测清单）：丢 reset -> 丢 gitBranch ->
-    /// 只留额度组 -> 原样输出。
+    /// Four-level width degradation (PLAN P3 unit test list): drop reset -> drop gitBranch ->
+    /// keep only the quota group -> output as-is.
     #[test]
     fn width_degradation_ladder() {
         let cfg = Config::default();
@@ -580,10 +586,10 @@ default_effort = "low"
             now(),
             None,
         );
-        assert!(full.contains("(rst"), "全量含 reset");
-        assert!(full.contains("\x1b[35mmain"), "全量含 git");
+        assert!(full.contains("(rst"), "full contains reset");
+        assert!(full.contains("\x1b[35mmain"), "full contains git");
 
-        // 第 1 级：宽度 < 全量 -> 丢 reset
+        // Level 1: width < full -> drop reset
         let w1 = visible_width(&full) as u32 - 1;
         let l1 = render_line(
             &payload_full(),
@@ -594,10 +600,10 @@ default_effort = "low"
             now(),
             None,
         );
-        assert!(!l1.contains("(rst"), "第 1 级丢 reset");
-        assert!(l1.contains("\x1b[35mmain"), "第 1 级仍含 git");
+        assert!(!l1.contains("(rst"), "level 1 drops reset");
+        assert!(l1.contains("\x1b[35mmain"), "level 1 still contains git");
 
-        // 第 2 级：再缩 -> 丢 gitBranch
+        // Level 2: shrink again -> drop gitBranch
         let w2 = visible_width(&l1) as u32 - 1;
         let l2 = render_line(
             &payload_full(),
@@ -608,11 +614,11 @@ default_effort = "low"
             now(),
             None,
         );
-        assert!(!l2.contains("\x1b[35m"), "第 2 级丢 git");
-        assert!(l2.contains("5h"), "第 2 级仍含额度组");
-        assert!(l2.contains("\x1b[36mKimi"), "第 2 级仍含 model");
+        assert!(!l2.contains("\x1b[35m"), "level 2 drops git");
+        assert!(l2.contains("5h"), "level 2 still contains the quota group");
+        assert!(l2.contains("\x1b[36mKimi"), "level 2 still contains model");
 
-        // 第 3 级：只留额度组
+        // Level 3: keep only the quota group
         let w3 = visible_width(&l2) as u32 - 1;
         let l3 = render_line(
             &payload_full(),
@@ -623,11 +629,14 @@ default_effort = "low"
             now(),
             None,
         );
-        assert!(l3.contains("5h"), "第 3 级含额度组");
-        assert!(!l3.contains("\x1b[36mKimi"), "第 3 级丢 model");
-        assert!(l3.starts_with("\x1b[32m5h"), "第 3 级以额度组开头");
+        assert!(l3.contains("5h"), "level 3 contains the quota group");
+        assert!(!l3.contains("\x1b[36mKimi"), "level 3 drops model");
+        assert!(
+            l3.starts_with("\x1b[32m5h"),
+            "level 3 starts with the quota group"
+        );
 
-        // 第 4 级：宽度极小 -> 原样输出（等于 full）
+        // Level 4: extremely narrow width -> output as-is (equals full)
         let l4 = render_line(
             &payload_full(),
             Some(&c),
@@ -637,41 +646,50 @@ default_effort = "low"
             now(),
             None,
         );
-        assert_eq!(l4, full, "第 4 级原样输出交宿主截断");
+        assert_eq!(
+            l4, full,
+            "level 4 outputs as-is, leaving truncation to the host"
+        );
     }
 
-    /// reset_time=false 等价降级第 1 级（SPEC §8）。
+    /// reset_time=false is equivalent to degradation level 1 (SPEC §8).
     #[test]
     fn reset_time_config_off() {
         let cfg = parse_minimal("[render.quota]\nreset_time = false\n");
         let c = cached_full();
         let line = render_line(&payload_full(), Some(&c), &cfg, None, 400, now(), None);
-        assert!(!line.contains("(rst"), "reset_time=false 永久丢 reset");
-        assert!(line.contains("\x1b[35mmain"), "其余字段正常");
+        assert!(
+            !line.contains("(rst"),
+            "reset_time=false permanently drops reset"
+        );
+        assert!(
+            line.contains("\x1b[35mmain"),
+            "other fields render normally"
+        );
     }
 
     fn parse_minimal(text: &str) -> Config {
         crate::config::parse(text)
     }
 
-    /// 空/非法 payload：无字段可渲染时输出空行（宿主回退，SPEC §4.1 步骤 5）。
+    /// Empty/invalid payload: renders an empty line when no field is renderable (host falls back, SPEC §4.1 step 5).
     #[test]
     fn empty_payload_renders_empty_line() {
         let cfg = Config::default();
         let empty = render_line(&serde_json::json!({}), None, &cfg, None, 120, now(), None);
         assert_eq!(empty, "");
-        // quota 组缓存缺失同样省略
+        // a missing quota-group cache is omitted the same way
         let null_payload = render_line(&Value::Null, None, &cfg, None, 120, now(), None);
         assert_eq!(null_payload, "");
     }
 
-    /// UTF-8 lossy（SPEC §7.6）：非法字节 -> U+FFFD，不崩溃；非法 JSON -> 空 payload。
+    /// UTF-8 lossy (SPEC §7.6): invalid bytes -> U+FFFD, no crash; invalid JSON -> empty payload.
     #[test]
     fn payload_lossy_and_invalid() {
         let v = payload_from_bytes(b"\xff\xfe not json");
         assert_eq!(v, Value::Null);
 
-        // 合法 JSON 载体中的非法 UTF-8 字节：lossy 替换后正常解析
+        // invalid UTF-8 bytes inside a valid JSON carrier: parses fine after lossy replacement
         let mut bytes = b"{\"model\":\"".to_vec();
         bytes.extend_from_slice(&[0xff]);
         bytes.extend_from_slice(b"\"}");
@@ -679,13 +697,16 @@ default_effort = "low"
         assert_eq!(v.get("model").and_then(|m| m.as_str()), Some("\u{FFFD}"));
     }
 
-    /// order 重排生效；额度组缓存 error 时整体省略（防御）。
+    /// order reordering takes effect; a cache error on the quota group omits the whole group (defensive).
     #[test]
     fn order_and_error_cache() {
         let cfg = parse_minimal("[render]\norder = [\"quota\", \"permission_mode\"]\n");
         let c = cached_full();
         let line = render_line(&payload_full(), Some(&c), &cfg, None, 400, now(), None);
-        assert!(line.starts_with("\x1b[32m5h"), "额度组在首位: {line:?}");
+        assert!(
+            line.starts_with("\x1b[32m5h"),
+            "quota group comes first: {line:?}"
+        );
 
         let mut err = cached_full();
         err.error = Some("HttpRequestException".into());
@@ -698,12 +719,15 @@ default_effort = "low"
             now(),
             None,
         );
-        assert!(!line.contains("5h"), "error 缓存不渲染额度组");
-        assert!(line.contains("\x1b[31myolo"), "其余字段照常");
+        assert!(
+            !line.contains("5h"),
+            "error cache does not render the quota group"
+        );
+        assert!(line.contains("\x1b[31myolo"), "other fields as usual");
     }
 
-    /// colors=false 单色渲染（SPEC §7.2 v1.4）：输出不含任何 SGR，可见内容
-    /// （段文本、顺序、reset 后缀、纯字符分隔符）与彩色版一致；降级阶梯照常。
+    /// colors=false monochrome rendering (SPEC §7.2 v1.4): output contains no SGR; visible content
+    /// (segment text, order, reset suffix, plain-character separators) matches the colored version; the degradation ladder still applies.
     #[test]
     fn monochrome_strips_all_sgr() {
         let cfg = Config {
@@ -720,7 +744,10 @@ default_effort = "low"
             now(),
             None,
         );
-        assert!(!line.contains('\x1b'), "单色输出不得含 SGR: {line:?}");
+        assert!(
+            !line.contains('\x1b'),
+            "monochrome output must not contain SGR: {line:?}"
+        );
         for piece in [
             "yolo",
             "Kimi",
@@ -731,12 +758,18 @@ default_effort = "low"
             "month 43%",
             "main",
         ] {
-            assert!(line.contains(piece), "缺 {piece}: {line:?}");
+            assert!(line.contains(piece), "missing {piece}: {line:?}");
         }
-        assert!(line.contains(" | "), "纯字符段间分隔: {line:?}");
-        assert!(line.contains(" · "), "纯字符组内分隔: {line:?}");
-        // 单色 × 降级阶梯组合（PLAN P6）：width=30 时降级到"只留额度组"（无
-        // reset 后缀，visible 宽恰 29），输出仍须零 SGR
+        assert!(
+            line.contains(" | "),
+            "plain-character segment separator: {line:?}"
+        );
+        assert!(
+            line.contains(" · "),
+            "plain-character intra-group separator: {line:?}"
+        );
+        // Monochrome x degradation-ladder combination (PLAN P6): at width=30 it degrades to "keep only
+        // the quota group" (no reset suffix, visible width exactly 29); output must still have zero SGR
         let degraded = render_line(
             &payload_full(),
             Some(&c),
@@ -746,13 +779,19 @@ default_effort = "low"
             now(),
             None,
         );
-        assert!(!degraded.contains('\x1b'), "降级后仍须单色: {degraded:?}");
+        assert!(
+            !degraded.contains('\x1b'),
+            "must remain monochrome after degradation: {degraded:?}"
+        );
         assert!(
             !degraded.contains("main") && !degraded.contains("(rst"),
-            "已降级丢 git/reset"
+            "degraded: git/reset dropped"
         );
-        assert!(degraded.starts_with("5h 21%"), "只留额度组: {degraded:?}");
-        // 与彩色版逐字符可比（彩色版 = 单色版 + ANSI 包装）
+        assert!(
+            degraded.starts_with("5h 21%"),
+            "quota group only: {degraded:?}"
+        );
+        // character-for-character comparable with the colored version (colored = monochrome + ANSI wrapping)
         let color_cfg = Config {
             colors: true,
             ..Config::default()
@@ -781,10 +820,13 @@ default_effort = "low"
                 plain.push(ch);
             }
         }
-        assert_eq!(line, plain, "单色版可见内容须与彩色版一致");
+        assert_eq!(
+            line, plain,
+            "monochrome visible content must match the colored version"
+        );
     }
 
-    /// visible_width 剔除 ANSI 后按字符数计。
+    /// visible_width counts characters after stripping ANSI.
     #[test]
     fn visible_width_strips_ansi() {
         assert_eq!(visible_width("\x1b[31myolo\x1b[0m"), 4);
@@ -792,10 +834,10 @@ default_effort = "low"
         assert_eq!(visible_width(""), 0);
     }
 
-    /// booster 渲染：默认关闭不显示；开启且 Ready 时以 ASCII 显示余额（元）。
+    /// booster rendering: off by default and not shown; when enabled and Ready, the balance (yuan) is shown in ASCII.
     #[test]
     fn booster_render_switch_and_ascii_format() {
-        let c = cached_full(); // balanceCents 1235 -> 12.35 元
+        let c = cached_full(); // balanceCents 1235 -> 12.35 yuan
         let off = render_line(
             &payload_full(),
             Some(&c),
@@ -805,25 +847,25 @@ default_effort = "low"
             now(),
             None,
         );
-        assert!(!off.contains("boost"), "booster 默认不渲染");
+        assert!(!off.contains("boost"), "booster not rendered by default");
 
         let cfg = parse_minimal("[render.quota]\nbooster = true\n");
         let on = render_line(&payload_full(), Some(&c), &cfg, None, 400, now(), None);
         assert!(
             on.contains("\x1b[36mboost 12.35\x1b[0m"),
-            "booster ASCII 余额: {on:?}"
+            "booster ASCII balance: {on:?}"
         );
 
-        // 非 Ready（NoData/NotActivated）不显示
+        // not Ready (NoData/NotActivated): not shown
         let mut nodata = cached_full();
         nodata.extra.as_mut().unwrap().state = ExtraState::NoData;
         let line = render_line(&payload_full(), Some(&nodata), &cfg, None, 400, now(), None);
-        assert!(!line.contains("boost"), "NoData 不显示余额");
+        assert!(!line.contains("boost"), "NoData shows no balance");
     }
 
-    // ---- tasks/agents 徽章（SPEC §7.1/§7.7 v1.5，PLAN P7 渲染侧单测）----
+    // ---- tasks/agents badges (SPEC §7.1/§7.7 v1.5, PLAN P7 render-side unit tests) ----
 
-    /// 隔离的临时 <kimi_home>（与 tasks.rs 测试同款，前缀区分）
+    /// Isolated temporary <kimi_home> (same approach as the tasks.rs tests, distinguished by prefix)
     fn temp_home(tag: &str) -> std::path::PathBuf {
         let base = std::env::temp_dir().join(format!("qs-render-{}-{}", tag, std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
@@ -831,7 +873,7 @@ default_effort = "low"
         base
     }
 
-    /// 落盘任务 json：<home>/sessions/wd_a/<sid>/agents/main/tasks/<task>.json
+    /// Write a task json to disk: <home>/sessions/wd_a/<sid>/agents/main/tasks/<task>.json
     fn write_task(home: &std::path::Path, sid: &str, task: &str, json: &str) {
         let dir = home
             .join("sessions")
@@ -848,13 +890,13 @@ default_effort = "low"
         r#"{"taskId":"t","status":"running","kind":"agent","startedAt":1}"#
     }
 
-    /// 渲染位置（SPEC §10.1 v1.5）：tasks 段位于额度组之前；两徽章单空格
-    /// 连接成一段（各自 span 包装，同宿主 per-badge chalk 语义）；单复数按
-    /// 计数（1 task / 2 agents）。
+    /// Render position (SPEC §10.1 v1.5): the tasks segment comes before the quota group; the two
+    /// badges join with a single space into one segment (each span-wrapped, same per-badge chalk
+    /// semantics as the host); singular/plural by count (1 task / 2 agents).
     #[test]
     fn tasks_badge_before_quota_and_plural() {
         let home = temp_home("position");
-        // 1 个 bash（pid = 本测试进程，必然存活）+ 2 个 agent
+        // 1 bash (pid = this test process, guaranteed alive) + 2 agents
         write_task(
             &home,
             "s",
@@ -877,16 +919,19 @@ default_effort = "low"
         );
         assert!(
             line.contains("\x1b[36m[1 task running]\x1b[0m \x1b[36m[2 agents running]\x1b[0m"),
-            "单空格连接（各自 span 包装，同宿主 per-badge chalk）+ 单复数: {line:?}"
+            "single-space join (each span-wrapped, same as the host's per-badge chalk) + singular/plural: {line:?}"
         );
         let badge = line.find("[1 task running]").unwrap();
         let quota = line.find("5h").unwrap();
-        assert!(badge < quota, "tasks 须位于额度组之前: {line:?}");
+        assert!(
+            badge < quota,
+            "tasks must come before the quota group: {line:?}"
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
-    /// colors=false 单色组合（SPEC §10.1 v1.5）：无任何 SGR、两徽章单空格
-    /// 连接、分隔符纯字符。
+    /// colors=false monochrome combination (SPEC §10.1 v1.5): no SGR at all, the two badges
+    /// joined by a single space, plain-character separators.
     #[test]
     fn tasks_badge_monochrome() {
         let home = temp_home("mono");
@@ -913,16 +958,22 @@ default_effort = "low"
             now(),
             Some(&home),
         );
-        assert!(!line.contains('\x1b'), "单色输出不得含 SGR: {line:?}");
+        assert!(
+            !line.contains('\x1b'),
+            "monochrome output must not contain SGR: {line:?}"
+        );
         assert!(
             line.contains("[1 task running] [1 agent running]"),
-            "单空格连接: {line:?}"
+            "single-space join: {line:?}"
         );
-        assert!(line.contains(" | "), "纯字符段间分隔: {line:?}");
+        assert!(
+            line.contains(" | "),
+            "plain-character segment separator: {line:?}"
+        );
         std::fs::remove_dir_all(&home).ok();
     }
 
-    /// 降级第 3 级（只留额度组）随现有跳过逻辑丢弃 tasks 段（只删不重排）。
+    /// Degradation level 3 (quota group only) drops the tasks segment via the existing skip logic (removal only, no reordering).
     #[test]
     fn tasks_badge_dropped_in_quota_only_degradation() {
         let home = temp_home("degrade");
@@ -931,7 +982,7 @@ default_effort = "low"
         let c = cached_full();
         let cfg = Config::default();
 
-        // 逐级缩宽到第 3 级触发点（同 width_degradation_ladder 手法）
+        // Narrow the width step by step to the level-3 trigger point (same technique as width_degradation_ladder)
         let full = render_line(&payload, Some(&c), &cfg, None, 400, now(), Some(&home));
         let l1 = render_line(
             &payload,
@@ -944,7 +995,7 @@ default_effort = "low"
         );
         assert!(
             l1.contains("[1 agent running]"),
-            "第 1 级（丢 reset）仍含徽章"
+            "level 1 (drop reset) still contains the badge"
         );
         let l2 = render_line(
             &payload,
@@ -957,7 +1008,7 @@ default_effort = "low"
         );
         assert!(
             l2.contains("[1 agent running]"),
-            "第 2 级（丢 git）仍含徽章: {l2:?}"
+            "level 2 (drop git) still contains the badge: {l2:?}"
         );
         let l3 = render_line(
             &payload,
@@ -968,14 +1019,17 @@ default_effort = "low"
             now(),
             Some(&home),
         );
-        assert!(l3.starts_with("\x1b[32m5h"), "第 3 级以额度组开头: {l3:?}");
-        assert!(!l3.contains("running"), "第 3 级丢 tasks 徽章");
-        assert!(!l3.contains("Kimi"), "第 3 级丢 model");
+        assert!(
+            l3.starts_with("\x1b[32m5h"),
+            "level 3 starts with the quota group: {l3:?}"
+        );
+        assert!(!l3.contains("running"), "level 3 drops the tasks badge");
+        assert!(!l3.contains("Kimi"), "level 3 drops model");
         std::fs::remove_dir_all(&home).ok();
     }
 
-    /// 扫描上限截断不触发段省略（SPEC §10.1 v1.5）：>32 个任务 json 截断后
-    /// 按已读计数渲染徽章（40 个 -> "[32 agents running]"）。
+    /// Scan-cap truncation does not trigger segment omission (SPEC §10.1 v1.5): with >32 task jsons,
+    /// the badge renders the count actually read after truncation (40 -> "[32 agents running]").
     #[test]
     fn tasks_badge_renders_truncated_counts() {
         let home = temp_home("cap-render");
@@ -993,21 +1047,21 @@ default_effort = "low"
         );
         assert!(
             line.contains("[32 agents running]"),
-            "截断计数仍渲染: {line:?}"
+            "truncated count still renders: {line:?}"
         );
         std::fs::remove_dir_all(&home).ok();
     }
 
-    /// 渲染端防御组合（SPEC §9 v1.5 行）：sessionId 穿越串 / sessions 目录
-    /// 缺失 -> 无徽章、其余字段正常、不 panic；order 删去 "tasks" 时段关闭
-    /// （并连带跳过扫描，SPEC §8）。
+    /// Render-side defense combinations (SPEC §9 v1.5 row): a traversal sessionId / missing sessions
+    /// directory -> no badge, other fields normal, no panic; removing "tasks" from order turns the
+    /// segment off (and skips the scan along with it, SPEC §8).
     #[test]
     fn tasks_badge_absent_on_defense_and_switch_off() {
         let home = temp_home("defense");
         write_task(&home, "s", "a1", agent_running_json());
         let cfg = Config::default();
 
-        // 穿越串 -> 无徽章，model 正常
+        // traversal string -> no badge, model normal
         let line = render_line(
             &serde_json::json!({"sessionId": "../evil", "model": "Kimi"}),
             None,
@@ -1020,7 +1074,7 @@ default_effort = "low"
         assert!(!line.contains("running"));
         assert!(line.contains("\x1b[36mKimi\x1b[0m"));
 
-        // 未命中（sessions 下无该 sessionId）-> 无徽章
+        // no hit (no such sessionId under sessions) -> no badge
         let line = render_line(
             &serde_json::json!({"sessionId": "other"}),
             None,
@@ -1032,7 +1086,7 @@ default_effort = "low"
         );
         assert!(!line.contains("running"));
 
-        // order 不含 "tasks" -> 整段关闭（扫描被跳过，kimi_home 照传）
+        // order lacks "tasks" -> whole segment off (scan skipped, kimi_home still passed)
         let cfg_no_tasks = parse_minimal("[render]\norder = [\"model\", \"quota\"]\n");
         let line = render_line(
             &serde_json::json!({"sessionId": "s"}),
@@ -1043,8 +1097,8 @@ default_effort = "low"
             now(),
             Some(&home),
         );
-        assert!(!line.contains("running"), "开关关闭无徽章: {line:?}");
-        assert!(line.contains("5h"), "其余字段正常");
+        assert!(!line.contains("running"), "switch off, no badge: {line:?}");
+        assert!(line.contains("5h"), "other fields render normally");
         std::fs::remove_dir_all(&home).ok();
     }
 }

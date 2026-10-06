@@ -1,5 +1,5 @@
-// quota-status 逻辑库：渲染/取数/解析/缓存全在此 crate，供 bin 入口与
-// tests/ 集成测试（golden parity）共用（P4 依赖 lib 目标导入解析函数）。
+// quota-status logic library: rendering/fetching/parsing/caching all live in this crate, shared by the
+// bin entry and tests/ integration tests (golden parity) (P4 depends on the lib target to import parsing functions).
 
 pub mod cache;
 pub mod config;

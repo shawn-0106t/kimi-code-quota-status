@@ -1,14 +1,14 @@
-// golden parity 测试（SPEC §10.2 / PLAN P4）。
+// Golden parity tests (SPEC §10.2 / PLAN P4).
 //
-// 机制复刻 repos/kimi-planbar-tui/go/internal/core/quota_test.go:206-293：
-// 输入 payload 内联（拷贝自 quota_test.go:240-266）-> 注入解析函数 ->
-// 以固定时钟序列化 -> 与 golden 文件逐字节比对（比较前 CRLF 归一化，同
-// goldens_test.go:23-25）。
+// Mechanism mirrors repos/kimi-planbar-tui/go/internal/core/quota_test.go:206-293:
+// input payload inlined (copied from quota_test.go:240-266) -> inject into the parse function ->
+// serialize with a fixed clock -> byte-for-byte comparison against the golden files (CRLF normalized
+// before comparison, same as goldens_test.go:23-25).
 //
-// 全部 33 case 已内化到本仓库 testdata/golden/（2026-10-01：30 个既有 case
-// 从参考仓库逐字节复制，CI 自足；month 3 个新 case 原生）。参考仓库仍为
-// 上游事实来源；新增 case 只进本仓库，绝不回写参考仓库（SPEC §10.2）。
-// 序列化与 --test-fetch 输出共用 QuotaResult::to_pretty_json。
+// All 33 cases are internalized into this repo's testdata/golden/ (2026-10-01: 30 pre-existing cases
+// copied byte-for-byte from the reference repo, CI self-contained; 3 native new month cases). The reference repo remains
+// the upstream source of truth; new cases only land in this repo, never written back to the reference repo (SPEC §10.2).
+// Serialization is shared with the --test-fetch output via QuotaResult::to_pretty_json.
 
 use chrono::{DateTime, Local, TimeZone, Timelike};
 use quota_status::quota::{QuotaResult, parse_payload};
@@ -16,9 +16,9 @@ use serde_json::Value;
 
 const GOLDEN_DIR: &str = "testdata/golden";
 
-/// golden 固定时钟（quota_test.go:14-15）：atZero = 1893456000000ms 整、
-/// atFracs = +123456789ns。本机时区 +08:00 下序列化为
-/// "2030-01-01T08:00:00+08:00" / "2030-01-01T08:00:00.123456789+08:00"。
+/// Fixed golden clock (quota_test.go:14-15): atZero = whole 1893456000000ms,
+/// atFracs = +123456789ns. Under the local +08:00 timezone these serialize as
+/// "2030-01-01T08:00:00+08:00" / "2030-01-01T08:00:00.123456789+08:00".
 fn at_zero() -> DateTime<Local> {
     Local.timestamp_millis_opt(1_893_456_000_000).unwrap()
 }
@@ -31,20 +31,20 @@ fn at_fracs() -> DateTime<Local> {
         .unwrap()
 }
 
-/// golden 断言按本机时区 +08:00 生成（fetchedAt/resetAt 偏移固定 +08:00，
-/// 与参考仓库 Go 测试的 time.Local 语义一致）。非 +08:00 机器上 fail-fast
-/// 并给出明确原因，避免以不直观的 byte mismatch 报错。
+/// Golden assertions are generated under the local +08:00 timezone (fetchedAt/resetAt offsets
+/// fixed at +08:00, matching the time.Local semantics of the reference repo's Go tests). Fail-fast
+/// on non-+08:00 machines with a clear reason, avoiding an unintuitive byte mismatch error.
 fn require_cn_timezone() {
     let off = Local::now().offset().local_minus_utc();
     assert_eq!(
         off,
         8 * 3600,
-        "golden parity 需在 UTC+08:00 时区机器上运行（golden 文件的 datetime 偏移为 +08:00）；当前 UTC 偏移 {}s",
+        "golden parity must run on a machine in the UTC+08:00 timezone (golden file datetime offsets are +08:00); current UTC offset {}s",
         off
     );
 }
 
-/// 读 golden 并做 CRLF 归一化（core.autocrlf 检出不破坏比对）。
+/// Read a golden file and apply CRLF normalization (core.autocrlf checkout does not break comparison).
 fn golden_text(dir: &str, name: &str) -> String {
     let path = format!("{}/{}/{}.txt", env!("CARGO_MANIFEST_DIR"), dir, name);
     let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("missing golden {path}: {e}"));
@@ -62,7 +62,7 @@ fn assert_matches(name: &str, got: &str, dir: &str) {
     }
 }
 
-/// 输入 payload（逐字拷贝自 quota_test.go:240-266）。
+/// Input payloads (copied verbatim from quota_test.go:240-266).
 fn payloads() -> Vec<(&'static str, &'static str)> {
     vec![
         (
@@ -144,8 +144,8 @@ fn payloads() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
-/// 既有 25 个解析 case：逐字节对齐内化 golden（month 键以
-/// skip_serializing_if 保证不出现，保持 byte-identical）。
+/// Pre-existing 25 parse cases: internalized goldens aligned byte-for-byte (the
+/// month key is guaranteed absent via skip_serializing_if, staying byte-identical).
 #[test]
 fn goldens_byte_for_byte() {
     require_cn_timezone();
@@ -155,8 +155,8 @@ fn goldens_byte_for_byte() {
     }
 }
 
-/// quota-error-* 4 个 case：不走网络，直接构造 error 结果比对
-/// （quota_test.go:272-275 同款）。
+/// The 4 quota-error-* cases: no network involved; construct error results directly
+/// and compare (same approach as quota_test.go:272-275).
 #[test]
 fn error_goldens_byte_for_byte() {
     require_cn_timezone();
@@ -179,9 +179,9 @@ fn error_goldens_byte_for_byte() {
     }
 }
 
-/// quota-fill-missing：失败结果从 last-known-good 回填三段
-///（quota_test.go:276-280 同款；month 同样回填但本 payload 无 totalQuota，
-/// 序列化无 month 键）。
+/// quota-fill-missing: the failure result backfills the three segments from
+/// last-known-good (same approach as quota_test.go:276-280; month is backfilled too, but
+/// this payload has no totalQuota, so serialization has no month key).
 #[test]
 fn fill_missing_golden_byte_for_byte() {
     require_cn_timezone();
@@ -207,8 +207,8 @@ fn fill_missing_golden_byte_for_byte() {
     assert_matches("quota-fill-missing", &fresh.to_pretty_json(), GOLDEN_DIR);
 }
 
-/// month 新 case（本项目 testdata/golden/，SPEC §6.6 / §10.2）：
-/// 有 limit 产生 month 键；limit 缺失 / 为 0 不产生 month 键。
+/// New month cases (this repo's testdata/golden/, SPEC §6.6 / §10.2):
+/// a limit yields the month key; limit missing / zero yields no month key.
 #[test]
 fn month_goldens_byte_for_byte() {
     require_cn_timezone();
@@ -232,15 +232,22 @@ fn month_goldens_byte_for_byte() {
     }
 }
 
-/// 抽查逐字节性（PLAN P4 验收 2 的机制内建版）：quota-success_full 的
-/// 期望文本与实际输出在未归一化前逐字节相同性依赖 golden 文件本身；
-/// 此处钉死归一化真实生效——CRLF 版本文本归一化后须与输出一致。
+/// Spot-check the byte-for-byte property (built-in version of PLAN P4 acceptance item 2): whether
+/// quota-success_full's expected text and actual output are byte-identical before normalization depends
+/// on the golden file itself; this test pins down that normalization really works - the CRLF text must match the output.
 #[test]
 fn crlf_normalization_is_load_bearing() {
     let raw = golden_text(GOLDEN_DIR, "quota-empty");
     let crlf = raw.replace('\n', "\r\n");
     let r = parse_payload(&must_parse("{}"), at_fracs());
     let got = r.to_pretty_json();
-    assert_eq!(crlf.replace("\r\n", "\n"), got, "CRLF 归一化后须逐字节一致");
-    assert_ne!(crlf, got, "未归一化的 CRLF 文本须与输出不同（归一化生效）");
+    assert_eq!(
+        crlf.replace("\r\n", "\n"),
+        got,
+        "must match byte-for-byte after CRLF normalization"
+    );
+    assert_ne!(
+        crlf, got,
+        "unnormalized CRLF text must differ from the output (normalization is load-bearing)"
+    );
 }

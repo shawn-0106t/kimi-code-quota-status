@@ -1,6 +1,6 @@
-# 静态 CRT 链接（SPEC §11）：产物为无 runtime 依赖的单 exe。
-# 不在此强制 [build] target：宿主机默认 triple 即 x86_64-pc-windows-msvc，
-# 强制指定会把产物路径改到 target/<triple>/release/，偏离 PLAN 的验收路径
-# target/release/quota-status.exe。本工程仅支持 Windows x64。
+# Static CRT linking (SPEC §11): the artifact is a single exe with no runtime dependencies.
+# Do not force a [build] target here: the host's default triple is already x86_64-pc-windows-msvc,
+# and forcing it would move the artifact path to target/<triple>/release/, deviating from the PLAN
+# acceptance path target/release/quota-status.exe. This project supports Windows x64 only.
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]

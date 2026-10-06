@@ -6,6 +6,10 @@
 - 方法：通读 SPEC（409 行）与 PLAN（296 行），提取全部可证伪论断 70+ 条，分三路对 `repos/kimi-code`、`repos/kimi-planbar-tui`、`repos/kimi-planbar` 逐条读源码取证，再做两文档内部一致性判定
 - 路径约定：本文所有 `path:line` 引用相对本仓库根
 
+> **English abstract** — Second-round independent review report (2026-10-01) covering SPEC v1.0 and PLAN v1.0, conducted read-only and falsification-oriented. It spot-checked 23 citations against the referenced source repositories and raised 8 findings (1 high, 2 medium, 5 low); the most significant was that the host renders event-driven rather than polling about once per second, which reshaped the refresh acceptance criteria. This document is a historical record: all 8 findings were subsequently arbitrated and their revisions folded into SPEC and PLAN, so the wording here no longer reflects the current contract and must not be used as a basis for changing code.
+>
+> *Note: internal development document written in Chinese; the Chinese body below is authoritative and is not fully translated.*
+
 ---
 
 ## 复核清单逐项结论

@@ -6,6 +6,10 @@
 - 契约基线：`docs/SPEC.md` v1.2（初审时）；发现的修订已落入 SPEC v1.3 与代码
 - 执行方式：初审与修复后复核各一轮，均由独立 code-reviewer agent 执行
 
+> **English abstract** — Third-round independent code review (2026-10-01) of the implemented P0-P5 code (all of src/, tests/golden.rs, and the cargo build config), conducted read-only and falsification-oriented. The initial pass found 0 Critical / 2 Major / 3 Minor / 5 Info; the two Major issues were a zero-access CONOUT$ handle that made console width queries always fail, and a cache freshness check that could cause a refresh spawn storm. A follow-up verification round confirmed all fixes were correctly implemented, and the final verdict is deliverable; the related contract revisions were folded into SPEC v1.3. One item, on-device verification of the console width fix, was deferred to the final acceptance pass.
+>
+> *Note: internal development document written in Chinese; the Chinese body below is authoritative and is not fully translated.*
+
 ---
 
 ## 初审发现与处置（0 Critical / 2 Major / 3 Minor / 5 Info）

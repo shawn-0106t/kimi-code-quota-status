@@ -1,54 +1,65 @@
 # Changelog
 
-本仓库的显著变更记录于此。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
+All notable changes to this project are documented in this file.
 
-> 英文译本：[CHANGELOG.en.md](CHANGELOG.en.md)（随版本同步；两文不一致时以本文为准）。
+> The Chinese rendition ([CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)) is synced per version. In case of any divergence, this English version prevails.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### 依赖
+### Added
 
-- windows-sys 0.60 → 0.61、toml 0.9 → 1.1、actions/checkout v4 → v7（Dependabot 首批自动升级；semver-major 项代码零改动通过全量门禁，Cargo.lock 净减 71 行）
+- Global-audience contributor infrastructure: English `CONTRIBUTING.md` (build/test gates, the golden-parity UTC+08:00 requirement, golden-data policy, docs-sync obligations), GitHub issue templates (`.github/ISSUE_TEMPLATE/`) and a PR template, and `rust-toolchain.toml` pinning the contributor toolchain (CI stays on latest stable; the MSRV in Cargo.toml is unchanged)
+- Cargo package metadata: `repository`, `keywords`, `categories` (crates.io discoverability groundwork)
 
-### 安全
+### Changed
 
-- CI `ci.yml` 的 `test` job 补显式最小权限 `permissions: contents: read`——修复 CodeQL default setup 首扫 medium 告警 `actions/missing-workflow-permissions`（2026-10-03）；至此 `ci.yml` 两 job 与 `release.yml`（workflow 级 `contents: write`）均显式声明最小权限，GITHUB_TOKEN 不再回落 repo 默认权限
+- i18n pass for global users: `README.md` / `CHANGELOG.md` are now English-first (authoritative); the Chinese renditions moved to `README.zh-CN.md` / `CHANGELOG.zh-CN.md` (synced per version); all source comments, doc comments, and developer-facing test/assert messages were translated to English; the internal dev docs (PLAN/REVIEW/REVIEW3/HANDOFF) gained English abstracts (bodies remain Chinese); docs/SPEC stays Chinese-authoritative with `SPEC.en.md` synced. Docs/comments-only — no behavior change.
+
+### Dependencies
+
+- windows-sys 0.60 → 0.61, toml 0.9 → 1.1, and actions/checkout v4 → v7 (first Dependabot batch; semver-major bumps pass the full gate suite with zero code changes, Cargo.lock nets −71 lines)
+
+### Security
+
+- CI `ci.yml` `test` job now declares explicit least-privilege `permissions: contents: read` — fixes the medium alert `actions/missing-workflow-permissions` from the first CodeQL default-setup scan (2026-10-03); both `ci.yml` jobs and `release.yml` (workflow-level `contents: write`) now declare explicit minimal permissions, so GITHUB_TOKEN no longer falls back to repository defaults
 
 ## [1.1.0] - 2026-10-02
 
-### 新增
+### Added
 
-- tasks/agents 徽章（SPEC v1.5 §7.7）：footer 第 1 行在额度组之前显示当前会话的后台任务计数——bash 后台任务 `[N task(s) running]`（cyan，经 `OpenProcess` + `GetExitCodeProcess` pid 存活校验）、后台 subagent `[M agent(s) running]`（running 即计入），两者皆零整段省略；数据源为 `<kimi_home>/sessions/` 扫描探测（workspace 探测 ≤64、任务 json 读取 ≤32，超限截断计数），sessionId 路径穿越防御 + 失败即省略，不阻塞渲染；默认 order 补入 `"tasks"`，从 order 删去即关闭整段并跳过扫描，不新增配置键
-- 单色渲染开关：`quota-bar.toml [render] colors = false` 时输出纯文本（无任何 SGR），整行由宿主包装为主题 text 色——与 footer 第 2 行 context 读数同色并随 `/theme` 联动（SPEC v1.4 §7.2/§7.4/§8）
+- tasks/agents badges (SPEC v1.5 §7.7): footer line 1 now shows background-task counts for the current session ahead of the quota group — bash background tasks `[N task(s) running]` (cyan, pid-liveness checked via `OpenProcess` + `GetExitCodeProcess`) and background subagents `[M agent(s) running]` (counted while running); the entire segment is omitted when both counts are zero. Data source is a scan of `<kimi_home>/sessions/` (≤64 workspace probes, ≤32 task-json reads — beyond the cap, counting is truncated rather than failed) with sessionId path-traversal defense and fail-and-omit semantics, never blocking rendering. `"tasks"` joins the default order; removing it from `order` disables the segment and skips the scan; no new configuration keys.
+- Monochrome render switch: with `quota-bar.toml [render] colors = false` the output is plain text (no SGR sequences at all) and the host wraps the whole line in the theme text color — matching the context readout on footer line 2 and following `/theme` switches (SPEC v1.4 §7.2/§7.4/§8).
 
-### 修复
+### Fixed
 
-- tasks 徽章失败语义对齐契约（SPEC §7.7 决策 E / §9）：任务 json 读取/解析失败由「跳过该文件、保留部分计数」改为短路返回零计数（段整体省略），对应单测断言方向反转并补空态回归（二次独立 code review Major，经用户仲裁修代码对齐契约）；`agents/<id>/tasks/` 目录不存在按空态跳过（非失败），其余 IO 错误同样段整体省略
-- 补 M-1 确定性回归单测（三次 review Minor-1）：好任务按名称序先于坏文件被计数 + 跨 agent 省略用例，确定性钉死「短路时丢弃已积累计数」
+- tasks-badge failure semantics aligned with the contract (SPEC §7.7 Decision E / §9): a task-json read/parse failure now short-circuits to zero counts (entire segment omitted) instead of "skip the file and keep partial counts"; the corresponding unit-test assertion was inverted and an empty-state regression added (second independent code review Major, resolved by user arbitration to fix the code toward the contract). A missing `agents/<id>/tasks/` directory is treated as an empty state (skip, not failure); any other IO error still omits the entire segment.
+- Added deterministic regression tests for M-1 (third-review Minor-1): good tasks counted ahead of a bad file in name order, plus a cross-agent omission case — deterministically pinning that "accumulated counts are discarded on short-circuit".
 
-### 文档
+### Documentation
 
-- SPEC v1.5.1：§7.7 决策 B 补记 sessionId 字符白名单语义（实现自 P7 review 加固起即如此，文本同步无行为变更）、决策 E 补记 NotFound 空态豁免、§10.1 补失败语义与空态两单测项；PLAN v1.5.1：P7「涉及文件」补录 src/lib.rs、src/main.rs；HANDOFF §2 单测拆分勘误（13/5）+ §7 附记（二次 review 经过与验收标准 5 通过）；三次 review Nit 收尾：SPEC 决策 E 补 flatten 条目级错误豁免、PLAN 契约依据 bump v1.5.1、README 门禁行标注首轮时点
+- SPEC v1.5.1: §7.7 Decision B now documents the sessionId character-whitelist semantics (in place since the P7 review hardening; text sync, no behavior change), Decision E adds the NotFound empty-state exemption, and §10.1 adds two unit-test items for failure semantics and the empty state. PLAN v1.5.1: the P7 "files involved" list now includes src/lib.rs and src/main.rs. HANDOFF: §2 unit-test split erratum (13/5) and a §7 addendum (second-review course and acceptance criterion 5 passing). Third-review Nit wrap-up: SPEC Decision E records the `flatten` entry-level error exemption, PLAN's contract reference bumped to v1.5.1, README gate row annotated with the first-review point in time.
 
 ## [1.0.0] - 2026-10-01
 
-首个正式版。
+First stable release.
 
-### 新增
+### Added
 
-- Kimi Code CLI statusline command：footer 第 1 行显示 Kimi For Coding 套餐额度（5h / week / month 百分比 + reset 时间）
-- 三模式进程模型：渲染模式（只读本地缓存，毫秒级退出，禁网络）/ `--refresh` 取数模式（detached 子进程后台回填）/ `--test-fetch` 自检模式（headless 不写缓存）
-- `~/.kimi-code/quota-bar.toml`：字段开关与行内顺序、额度子段开关、颜色阈值、缓存 TTL、base_url 覆盖
-- 渲染行字段：permissionMode（yolo/auto/manual 配色）、model、thinking 级别、额度组（绿/黄/红阈值）、gitBranch
-- 缓存机制：TTL 60s + mtime 回拨防刷新风暴 + 30s fast-retry + LKG 保留；PID 后缀 tmp + rename 原子写
-- 防御式解析（SPEC §6）：数字按字符串建模兼容真数字、limit 钳位防除零、NaN/敌意整数归零、resetTime 宽松阶梯、boosterWallet `isEnabled` 防御
-- 宽度感知降级阶梯：丢 reset 后缀 → 丢 gitBranch → 只留额度组 → 宿主截断兜底
-- golden parity 测试：33 case 逐字节对齐（30 个内化自 kimi-planbar-tui + 3 个月度原生 case）
-- GitHub Actions CI（fmt/clippy 门禁 + 单元 + golden + release 构建 + 5MB 体积门禁）与 tag `v*` 触发的 Release workflow（自动挂 exe + sha256）
-- MIT LICENSE + NOTICE（kimi-planbar / kimi-planbar-tui 派生归属）
+- Kimi Code CLI statusline command: footer line 1 shows Kimi For Coding plan usage (5h / week / month percentages + reset time)
+- Three-mode process model: render mode (local-cache only, millisecond exit, no network) / `--refresh` fetch mode (detached child backfills in the background) / `--test-fetch` self-check mode (headless, never writes the cache)
+- `~/.kimi-code/quota-bar.toml`: field switches and in-line order, quota sub-segment switches, color thresholds, cache TTL, base_url override
+- Rendered fields: permissionMode (yolo/auto/manual coloring), model, thinking level, quota group (green/yellow/red thresholds), gitBranch
+- Caching: TTL 60s + mtime rewind against refresh storms + 30s fast-retry + LKG preservation; PID-suffixed tmp + rename atomic write
+- Defensive parsing (SPEC §6): numbers modeled as strings with real-number fallback, limit clamped against division by zero, NaN/hostile integers normalized to zero, resetTime lenient ladder, boosterWallet `isEnabled` defense
+- Width-aware degradation ladder: drop reset suffixes → drop gitBranch → quota group only → host-side truncation as the final fallback
+- Golden parity tests: 33 cases aligned byte-for-byte (30 internalized from kimi-planbar-tui + 3 native month cases)
+- GitHub Actions CI (fmt/clippy gates + unit + golden + release build + 5MB size gate) and a tag `v*` Release workflow (attaches exe + sha256 automatically)
+- MIT LICENSE + NOTICE (kimi-planbar / kimi-planbar-tui derivation attribution)
 
-### 修复
+### Fixed
 
-- 第三轮独立 code review 的 2 Major + 3 Minor：console `CONOUT$` 句柄 access=0 致宽度查询恒失效；缓存新鲜判定把「可解析」相与进来架空防风暴回拨（明细见 docs/REVIEW3.md）
+- The 2 Major + 3 Minor findings of the third independent code review: console `CONOUT$` handle access=0 made width queries always fail; the cache freshness check AND-ed in "parseable", defeating the storm-prevention mtime rewind (details in docs/REVIEW3.md)
 
 [1.0.0]: https://github.com/shawn-0106t/kimi-code-quota-status/releases/tag/v1.0.0

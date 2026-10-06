@@ -1,8 +1,8 @@
 version: 2
 
 updates:
-  # Rust 依赖（Cargo.toml + Cargo.lock）；patch/minor 合并为单 PR 控噪音，
-  # major 升级单独开 PR 便于逐个评估
+  # Rust dependencies (Cargo.toml + Cargo.lock); patch/minor bumps are grouped
+  # into one PR to cut noise, while major upgrades get their own PR for review
   - package-ecosystem: cargo
     directory: /
     schedule:
@@ -13,7 +13,7 @@ updates:
           - "minor"
           - "patch"
 
-  # GitHub Actions 版本（ci.yml / release.yml）
+  # GitHub Actions versions (ci.yml / release.yml)
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -3,6 +3,10 @@
 - 目的：记录 P7 迭代的实现状态、验证结论与未尽事项，供后续会话/协作者接手。契约事实来源仍是 `docs/SPEC.md` v1.5 与 `docs/PLAN.md` P7 节，本文不重复契约内容，只记录"做到哪了、还差什么、坑在哪"。
 - 性质：历史工作记录（与 `docs/REVIEW.md`/`docs/REVIEW3.md` 同类）。是否随下次 commit 入库由提交者决定；若不入库，接手前请先读完本文。
 
+> **English abstract** — Handoff record for the P7 iteration (tasks/agents badges, 2026-10-02), written in Chinese for future sessions or collaborators taking over this repository. It documents the change list, verification results (formatting/clippy/test gates, independent code reviews, on-device acceptance), implementation notes and known pitfalls, and the decision points that required user input. A closing addendum records the final outcome: P7 was fully delivered (commit 087c266 plus a fix round), the second independent review's Major finding on task-file failure semantics was arbitrated and fixed to align with the SPEC contract, all five PLAN acceptance criteria passed, and v1.1.0 was released.
+>
+> *Note: internal development document written in Chinese; the Chinese body below is authoritative and is not fully translated.*
+
 ---
 
 ## 1. 状态总览

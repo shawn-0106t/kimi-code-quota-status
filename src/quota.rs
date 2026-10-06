@@ -1,10 +1,10 @@
-// 额度取数 + 防御解析，移植自 repos/kimi-planbar-tui/rust/src/quota.rs（SPEC §2.2），
-// 按 SPEC v1.1 完成三处变更：
-//  - 5h 段由"只取 limits[0]"升级为 window 条件匹配（§6.4）
-//  - 新增 month 段（root.totalQuota，§6.6）
-//  - QuotaResult 扩展 month 字段，None 时跳过序列化（§5.3，保既有 golden 不变）
-// 防御规则逐条对齐 SPEC §6 十条（数字按字符串建模、limit≤0 钳 1、NaN/inf 归零、
-// i64::MIN 可解析、resetTime 宽松阶梯、boosterWallet 防御、1e-8 元单位换算）。
+// Quota fetching + defensive parsing, ported from repos/kimi-planbar-tui/rust/src/quota.rs (SPEC §2.2),
+// with three changes per SPEC v1.1:
+//  - 5h segment upgraded from "take limits[0] only" to window-conditional matching (§6.4)
+//  - new month segment (root.totalQuota, §6.6)
+//  - QuotaResult extended with a month field, skipped on serialization when None (§5.3, existing goldens unchanged)
+// Defensive rules aligned one by one with the ten SPEC §6 rules (numbers modeled as strings, limit<=0 clamped to 1,
+// NaN/inf zeroed, i64::MIN parseable, resetTime lenient ladder, boosterWallet defense, 1e-8 yuan unit conversion).
 
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
@@ -44,8 +44,8 @@ pub struct ExtraInfo {
 pub struct QuotaResult {
     pub five_hour: Option<QuotaSegment>,
     pub week: Option<QuotaSegment>,
-    /// 月度额度段（本工具新增，SPEC §6.6）。None 时整个键不序列化，
-    /// 既有 30 个 golden（无 month 键）保持 byte-identical（SPEC §10.2）。
+    /// Monthly quota segment (added by this tool, SPEC §6.6). When None, the whole
+    /// key is not serialized; the existing 30 goldens (no month key) stay byte-identical (SPEC §10.2).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub month: Option<QuotaSegment>,
     pub extra: Option<ExtraInfo>,
@@ -66,7 +66,7 @@ impl QuotaResult {
     }
 
     /// On failure keep last-known-good data: fill null fields from `last`
-    /// (SPEC 16.5 step 2 / §5.3)。
+    /// (SPEC 16.5 step 2 / §5.3).
     pub fn fill_missing_from(&mut self, last: &QuotaResult) {
         if self.five_hour.is_none() {
             self.five_hour = last.five_hour.clone();
@@ -82,16 +82,16 @@ impl QuotaResult {
         }
     }
 
-    /// --test-fetch 输出与 golden 比对共用的序列化函数（SPEC §10.2）：
-    /// serde pretty、2 空格缩进、camelCase。解析路径保证 percent 有限，
-    /// 序列化不可能失败；fallback 仅为防御（panic=abort 下不可 unwinding）。
+    /// Serialization shared by the --test-fetch output and golden comparison (SPEC §10.2):
+    /// serde pretty, 2-space indent, camelCase. The parse path guarantees a finite
+    /// percent, so serialization cannot fail; the fallback is pure defense (no unwinding under panic=abort).
     pub fn to_pretty_json(&self) -> String {
         serde_json::to_string_pretty(self).unwrap_or_else(|_| "{}".to_string())
     }
 }
 
-/// base_url 覆盖链（SPEC §5.1）：env KIMI_CODE_BASE_URL > quota-bar.toml
-/// [network] base_url > 默认。`configured` 即 config 解析出的 base_url。
+/// base_url override chain (SPEC §5.1): env KIMI_CODE_BASE_URL > quota-bar.toml
+/// [network] base_url > default. `configured` is the base_url parsed from config.
 pub fn resolve_base_url(configured: Option<&str>) -> String {
     if let Ok(v) = std::env::var("KIMI_CODE_BASE_URL")
         && !v.is_empty()
@@ -104,15 +104,15 @@ pub fn resolve_base_url(configured: Option<&str>) -> String {
         .unwrap_or_else(|| DEFAULT_BASE_URL.to_string())
 }
 
-/// 取数入口（base_url/超时由 config 提供，SPEC §5.1/§8）。
+/// Fetch entry point (base_url/timeout provided by config, SPEC §5.1/§8).
 pub fn fetch(configured_base_url: Option<&str>, timeout_secs: u64) -> QuotaResult {
     fetch_from(&resolve_base_url(configured_base_url), timeout_secs)
 }
 
-/// 取数模式核心流程（SPEC §4.2 步骤 1–3；写缓存由调用方负责）。
-/// 错误类型名沿用 .NET 风格（SPEC §6.10）：
-/// 超时 -> TaskCanceledException；非 2xx 与其他传输错误 -> HttpRequestException；
-/// 响应体非法 -> JsonException；无凭证 -> no-token。
+/// Core flow of fetch mode (SPEC §4.2 steps 1-3; cache writing is the caller's job).
+/// Error type names keep the .NET style (SPEC §6.10):
+/// timeout -> TaskCanceledException; non-2xx and other transport errors -> HttpRequestException;
+/// invalid response body -> JsonException; no credential -> no-token.
 pub fn fetch_from(base_url: &str, timeout_secs: u64) -> QuotaResult {
     let Some(token) = credentials::load_token() else {
         return QuotaResult::failed("no-token", Local::now());
@@ -130,8 +130,8 @@ pub fn fetch_from(base_url: &str, timeout_secs: u64) -> QuotaResult {
     };
     let text = match resp.into_body().read_to_string() {
         Ok(t) => t,
-        // body 阶段超时（headers 已回、body 挂起）同为 TaskCanceledException，
-        // 其余（含非法 UTF-8）按响应体非法归 JsonException
+        // a body-stage timeout (headers already received, body stalled) is also
+        // TaskCanceledException; the rest (incl. invalid UTF-8) counts as JsonException
         Err(ureq::Error::Timeout(_)) => {
             return QuotaResult::failed("TaskCanceledException", Local::now());
         }
@@ -147,9 +147,9 @@ pub fn fetch_from(base_url: &str, timeout_secs: u64) -> QuotaResult {
     parse_payload(&root, Local::now())
 }
 
-/// 发送阶段错误分类（SPEC §5.1/§6.10，.NET 风格类型名）：超时 ->
-/// TaskCanceledException；非 2xx（ureq 默认 http_status_as_error，含纯 API key
-/// 账号的 404）与其余传输错误 -> HttpRequestException。
+/// Send-stage error classification (SPEC §5.1/§6.10, .NET-style type names): timeout ->
+/// TaskCanceledException; non-2xx (ureq defaults to http_status_as_error, including
+/// the 404 of pure API key accounts) and other transport errors -> HttpRequestException.
 fn classify_send_error(e: &ureq::Error) -> &'static str {
     match e {
         ureq::Error::Timeout(_) => "TaskCanceledException",
@@ -157,8 +157,8 @@ fn classify_send_error(e: &ureq::Error) -> &'static str {
     }
 }
 
-/// 防御解析（SPEC §6）。`now` 经参数注入：生产路径传 Local::now()，
-/// golden 测试传固定时钟（P4 parity 前置，避免返工）。
+/// Defensive parsing (SPEC §6). `now` is injected as a parameter: the production path
+/// passes Local::now(), golden tests pass a fixed clock (a P4 parity prerequisite, avoiding rework).
 pub fn parse_payload(root: &Value, now: DateTime<Local>) -> QuotaResult {
     let mut r = QuotaResult {
         five_hour: None,
@@ -168,8 +168,8 @@ pub fn parse_payload(root: &Value, now: DateTime<Local>) -> QuotaResult {
         fetched_at: now,
         error: None,
     };
-    // 5h 段：limits[] 中 window 条件匹配（SPEC §6.4），detail 非对象时
-    // parse_segment 落回全零值（对齐参考实现，golden quota-detail_string）
+    // 5h segment: window-conditional match within limits[] (SPEC §6.4); when detail is
+    // not an object, parse_segment falls back to all zeros (aligned with the reference impl, golden quota-detail_string)
     if let Some(detail) = root
         .get("limits")
         .and_then(|l| l.as_array())
@@ -178,14 +178,14 @@ pub fn parse_payload(root: &Value, now: DateTime<Local>) -> QuotaResult {
     {
         r.five_hour = Some(parse_segment(detail));
     }
-    // 周段：顶层 root.usage（对象才解析，SPEC §6.5）
+    // week segment: top-level root.usage (parsed only when an object, SPEC §6.5)
     if let Some(u) = root.get("usage")
         && u.is_object()
     {
         r.week = Some(parse_segment(u));
     }
-    // 月段：root.totalQuota，limit 缺失/为 0/非有限值（NaN 等）不产生段
-    //（SPEC §6.6/§6.3；NaN != 0.0 恒真，须显式排除）
+    // month segment: root.totalQuota; no segment when limit is missing/0/non-finite (NaN etc.)
+    // (SPEC §6.6/§6.3; NaN != 0.0 is always true, so it must be excluded explicitly)
     if let Some(t) = root.get("totalQuota") {
         let limit = get_f64(t, "limit");
         if t.is_object() && limit.is_finite() && limit != 0.0 {
@@ -196,8 +196,8 @@ pub fn parse_payload(root: &Value, now: DateTime<Local>) -> QuotaResult {
     r
 }
 
-/// 5h 段选窗（SPEC §6.4）：优先 window.duration == 300 且 window.timeUnit ==
-/// "TIME_UNIT_MINUTE" 的元素（duration 兼容字符串建模），找不到回落 limits[0]。
+/// 5h segment window selection (SPEC §6.4): prefer the element whose window.duration
+/// == 300 and window.timeUnit == "TIME_UNIT_MINUTE" (duration string-modeled too); fall back to limits[0].
 fn pick_five_hour(limits: &[Value]) -> Option<&Value> {
     limits
         .iter()
@@ -296,7 +296,7 @@ fn parse_extra(wallet: Option<&Value>) -> ExtraInfo {
 
     // isEnabled defense: when the booster is disabled, amountLeft is an estimate
     // (monthly limit minus used), NOT the real balance -> must read as NotActivated.
-    // 仅严格布尔 false 触发；字符串 "false"、数字 0 等非布尔值按启用路径继续。
+    // Only strict boolean false triggers; non-bool values like string "false" or number 0 continue on the enabled path.
     if w.get("isEnabled").and_then(|v| v.as_bool()) == Some(false) {
         return info;
     }
@@ -328,10 +328,10 @@ mod tests {
     use chrono::{TimeZone, Timelike};
     use serde_json::json;
 
-    /// golden 固定时钟（quota_test.go:14-15）：
-    /// atZero = 1893456000000ms 整；atFracs = +123456789ns。
-    /// 本机时区 +08:00 下分别序列化为 "2030-01-01T08:00:00+08:00" 与
-    /// "2030-01-01T08:00:00.123456789+08:00"。
+    /// Golden fixed clock (quota_test.go:14-15):
+    /// atZero = 1893456000000ms exactly; atFracs = +123456789ns.
+    /// In the +08:00 local timezone these serialize to "2030-01-01T08:00:00+08:00"
+    /// and "2030-01-01T08:00:00.123456789+08:00" respectively.
     fn at_fracs() -> DateTime<Local> {
         Local
             .timestamp_millis_opt(1_893_456_000_000)
@@ -393,8 +393,8 @@ mod tests {
         );
     }
 
-    /// SPEC 6.8：isEnabled 防御仅严格布尔 false 触发；字符串 "false" 与数字 0
-    /// 不触发，按启用路径继续解析（golden isenabled_string_false / isenabled_zero）。
+    /// SPEC 6.8: the isEnabled defense triggers only on strict boolean false; string
+    /// "false" and number 0 do not trigger, parsing continues on the enabled path (golden isenabled_string_false / isenabled_zero).
     #[test]
     fn isenabled_non_bool_does_not_trigger_defense() {
         let as_str = parse_extra(Some(&json!({
@@ -486,8 +486,8 @@ mod tests {
         assert_eq!(info.monthly_limit_cents, Some(10000));
     }
 
-    /// SPEC §6.4 升级：优先匹配 window.duration == 300 && timeUnit ==
-    /// TIME_UNIT_MINUTE 的 limit（不是 limits[0] 也能命中）。
+    /// SPEC §6.4 upgrade: prefer the limit matching window.duration == 300 &&
+    /// timeUnit == TIME_UNIT_MINUTE (hits even when it is not limits[0]).
     #[test]
     fn five_hour_window_match_hits() {
         let root = json!({
@@ -503,10 +503,10 @@ mod tests {
         assert_eq!(seg.percent, 21.0);
     }
 
-    /// SPEC §6.4 回落：无命中元素时回落 limits[0]；window 字段形状异常同样回落。
+    /// SPEC §6.4 fallback: fall back to limits[0] when no element matches; a malformed window shape falls back too.
     #[test]
     fn five_hour_window_match_falls_back() {
-        // 无一命中 -> limits[0]
+        // none matches -> limits[0]
         let root = json!({
             "limits": [
                 {"window": {"duration": 60, "timeUnit": "TIME_UNIT_MINUTE"},
@@ -518,7 +518,7 @@ mod tests {
         let r = parse_payload(&root, at_fracs());
         assert_eq!(r.five_hour.unwrap().percent, 68.0);
 
-        // window 缺失/非对象 -> 回落 limits[0]
+        // window missing/not an object -> fall back to limits[0]
         let root = json!({
             "limits": [
                 {"window": "weird", "detail": {"used": "68", "limit": "100"}}
@@ -528,7 +528,7 @@ mod tests {
         assert_eq!(r.five_hour.unwrap().percent, 68.0);
     }
 
-    /// SPEC §6.6 月段三例：有 limit 产生段；limit 缺失 / 为 0 不产生段。
+    /// SPEC §6.6 month segment, three cases: with a limit a segment is produced; missing / 0 limit produces none.
     #[test]
     fn month_segment_requires_nonzero_limit() {
         let with_limit = parse_payload(
@@ -549,14 +549,14 @@ mod tests {
         );
         assert!(zero.month.is_none());
 
-        // totalQuota 非对象同样不产生段
+        // a non-object totalQuota likewise produces no segment
         let not_object = parse_payload(&json!({"totalQuota": "nope"}), at_fracs());
         assert!(not_object.month.is_none());
     }
 
-    /// month 键仅在 Some 时序列化（SPEC §10.2）：无 totalQuota 的 payload
-    /// 输出不得含 "month" 键（注意 extra 的 monthly* 字段含 "month" 子串，
-    /// 须匹配完整键名）。
+    /// The month key serializes only when Some (SPEC §10.2): the output of a payload
+    /// without totalQuota must not contain the "month" key (note extra's monthly*
+    /// fields contain the "month" substring; match the full key name).
     #[test]
     fn month_key_absent_when_none() {
         let r = parse_payload(&json!({}), at_fracs());
@@ -568,7 +568,7 @@ mod tests {
         assert!(r.to_pretty_json().contains("\"month\":"));
     }
 
-    /// SPEC §5.1 错误分类钉死：非 2xx 与其他传输错误 -> HttpRequestException。
+    /// SPEC §5.1 error classification pinned: non-2xx and other transport errors -> HttpRequestException.
     #[test]
     fn send_error_classification() {
         assert_eq!(
@@ -581,14 +581,14 @@ mod tests {
         );
     }
 
-    /// SPEC §5.1 错误分类钉死：超时 -> TaskCanceledException。本地监听但不
-    /// 回应，短全局超时触发 ureq::Error::Timeout。
+    /// SPEC §5.1 error classification pinned: timeout -> TaskCanceledException. A local
+    /// listener that accepts but never responds, under a short global timeout, triggers ureq::Error::Timeout.
     #[test]
     fn timeout_classifies_as_task_canceled() {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         std::thread::spawn(move || {
-            // 接受连接并握住不放（不回应），保持到测试结束
+            // accept the connection and hold it without responding, until the test ends
             let mut held = Vec::new();
             for stream in listener.incoming().flatten() {
                 held.push(stream);

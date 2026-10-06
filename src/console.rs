@@ -1,5 +1,5 @@
-// Windows 进程/控制台辅助：detached 刷新子进程派生（SPEC §4.4）+
-// CONOUT$ 终端宽度查询（SPEC §7.5）。
+// Windows process/console helpers: detached refresh child process spawning (SPEC §4.4) +
+// CONOUT$ terminal width query (SPEC §7.5).
 
 use std::os::windows::process::CommandExt;
 use std::process::{Command, Stdio};
@@ -10,11 +10,11 @@ use windows_sys::Win32::Storage::FileSystem::{
 use windows_sys::Win32::System::Console::{CONSOLE_SCREEN_BUFFER_INFO, GetConsoleScreenBufferInfo};
 use windows_sys::Win32::System::Threading::{CREATE_NO_WINDOW, DETACHED_PROCESS};
 
-/// 派生 detached --refresh 子进程（SPEC §4.4）：
-/// `Command::new(<自身绝对路径>).arg("--refresh")` + CREATE_NO_WINDOW |
-/// DETACHED_PROCESS + stdio 三路 DEVNULL；spawn 后立即返回，父进程
-/// 不等待、不读取其任何输出。远早于宿主 300ms 超时退出，宿主的
-/// `taskkill /T` 不波及 detached 子进程。
+/// Spawns a detached --refresh child process (SPEC §4.4):
+/// `Command::new(<own absolute path>).arg("--refresh")` + CREATE_NO_WINDOW |
+/// DETACHED_PROCESS + stdio DEVNULL on all three; returns immediately after spawn, the parent
+/// does not wait and does not read any of its output. It exits far earlier than the host's
+/// 300ms timeout, and the host's `taskkill /T` does not reach detached child processes.
 pub fn spawn_detached_refresh() -> std::io::Result<()> {
     let exe = std::env::current_exe()?;
     Command::new(exe)
@@ -27,14 +27,14 @@ pub fn spawn_detached_refresh() -> std::io::Result<()> {
         .map(|_| ())
 }
 
-/// 宽度归一（SPEC §7.5）：查询失败或异常值（0）按 120 兜底。
+/// Width normalization (SPEC §7.5): query failure or abnormal value (0) falls back to 120.
 pub fn normalize_width(raw: Option<u32>) -> u32 {
     raw.filter(|w| *w > 0).unwrap_or(120)
 }
 
-/// 终端宽度：stdout 虽为 pipe 但进程仍附着宿主 console —— 用
-/// CreateFileW("CONOUT$") + GetConsoleScreenBufferInfo().dwSize.X 查询；
-/// headless/查询失败按 120（经 normalize_width）。
+/// Terminal width: although stdout is a pipe, the process is still attached to the host console --
+/// query via CreateFileW("CONOUT$") + GetConsoleScreenBufferInfo().dwSize.X;
+/// headless/query failure falls back to 120 (via normalize_width).
 pub fn console_width() -> u32 {
     let raw = query_console_width();
     normalize_width(raw)
@@ -45,8 +45,8 @@ fn query_console_width() -> Option<u32> {
     let handle = unsafe {
         CreateFileW(
             conout.as_ptr(),
-            // GENERIC_READ (0x8000_0000)：GetConsoleScreenBufferInfo 要求句柄
-            // 带读权限；access=0 会 ERROR_ACCESS_DENIED，宽度查询恒失败
+            // GENERIC_READ (0x8000_0000): GetConsoleScreenBufferInfo requires the handle to
+            // carry read access; access=0 yields ERROR_ACCESS_DENIED and width query always fails
             0x8000_0000,
             FILE_SHARE_READ | FILE_SHARE_WRITE,
             std::ptr::null(),
@@ -62,7 +62,7 @@ fn query_console_width() -> Option<u32> {
     let ok = unsafe { GetConsoleScreenBufferInfo(handle, &mut info) };
     unsafe { CloseHandle(handle) };
     if ok != 0 {
-        // dwSize.X 为 i16：理论负值经 try_from 落 None -> 兜底 120
+        // dwSize.X is i16: a theoretical negative value goes through try_from to None -> fallback 120
         u32::try_from(info.dwSize.X).ok()
     } else {
         None
@@ -74,7 +74,7 @@ mod tests {
     use super::*;
     use windows_sys::Win32::System::Console::GetConsoleProcessList;
 
-    /// 宽度不可得分支（PLAN P3 单测清单）：None/0 -> 120 兜底，正常值透传。
+    /// Width-unavailable branch (PLAN P3 unit test list): None/0 -> 120 fallback, normal values pass through.
     #[test]
     fn width_normalize_fallback() {
         assert_eq!(normalize_width(None), 120);
@@ -83,17 +83,17 @@ mod tests {
         assert_eq!(normalize_width(Some(u32::MAX)), u32::MAX);
     }
 
-    /// 真实查询烟测：测试进程有 console 时返回正宽度，headless 落 120。
-    /// 不假定最小宽度（80 列 console 同样合法）。
+    /// Real query smoke test: returns a positive width when the test process has a console, 120 when headless.
+    /// Does not assume a minimum width (an 80-column console is equally valid).
     #[test]
     fn console_width_sane() {
         let w = console_width();
         assert!(w > 0, "width = {w}");
     }
 
-    /// CONOUT$ 句柄权限回归（access=0 的旧实现查询恒失败落 None）：进程
-    /// 附着 console 时 query_console_width 必须返回 Some；headless（无
-    /// console）跳过断言。
+    /// CONOUT$ handle permission regression (the old access=0 implementation always failed the
+    /// query, returning None): when the process is attached to a console, query_console_width
+    /// must return Some; headless (no console) skips the assertion.
     #[test]
     fn query_width_succeeds_when_console_attached() {
         let attached = unsafe {
@@ -103,7 +103,7 @@ mod tests {
         if attached {
             assert!(
                 query_console_width().is_some(),
-                "进程附着 console 但宽度查询失败（CONOUT$ 句柄权限问题？）"
+                "process attached to console but width query failed (CONOUT$ handle permission issue?)"
             );
         }
     }

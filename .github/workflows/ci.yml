@@ -7,17 +7,17 @@ on:
   workflow_dispatch:
 
 jobs:
-  # 敏感信息扫描（第二道防线）：本地 pre-commit 的 gitleaks 可被 --no-verify
-  # 绕过，CI 侧对全量提交历史兜底扫描
+  # Secret scanning (second line of defense): the local pre-commit gitleaks hook
+  # can be bypassed with --no-verify, so CI sweeps the full commit history
   gitleaks:
     runs-on: ubuntu-latest
     permissions:
-      contents: read # 最小权限；gitleaks-action@v2 对个人公共 repo 无需 GITLEAKS_LICENSE
-      # （未来转入 org 或转 private 时会开始要求 license，job 会明确报错提示）
+      contents: read # least privilege; gitleaks-action@v2 needs no GITLEAKS_LICENSE for personal public repos
+      # (org-owned or private repos will start requiring a license; the job then fails with an explicit error)
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0 # 完整历史，gitleaks 扫描全部 commit
+          fetch-depth: 0 # full history so gitleaks scans every commit
 
       - uses: gitleaks/gitleaks-action@v3
         env:
@@ -26,7 +26,7 @@ jobs:
   test:
     runs-on: windows-latest
     permissions:
-      contents: read # 最小权限；test 仅需 checkout 拉取代码（CodeQL actions/missing-workflow-permissions）
+      contents: read # least privilege; test only needs checkout to pull code (CodeQL actions/missing-workflow-permissions)
     env:
       CARGO_TERM_COLOR: always
     steps:
