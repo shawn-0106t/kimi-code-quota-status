@@ -16,6 +16,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Changed
 
 - i18n pass for global users: `README.md` / `CHANGELOG.md` are now English-first (authoritative); the Chinese renditions moved to `README.zh-CN.md` / `CHANGELOG.zh-CN.md` (synced per version); all source comments, doc comments, and developer-facing test/assert messages were translated to English; the internal dev docs (PLAN/REVIEW/REVIEW3/HANDOFF) gained English abstracts (bodies remain Chinese); docs/SPEC stays Chinese-authoritative with `SPEC.en.md` synced. Docs/comments-only — no behavior change.
+- `SECURITY.md` restructured from interleaved per-section bilingual text into a single file with the full English section first, then the full Chinese section (content unchanged; layout only)
+- `CONTRIBUTING.md` gained a full Chinese rendition appended below the English text, in the same single-file English-first layout as `SECURITY.md` (English section unchanged and remains authoritative)
 
 ### Dependencies
 

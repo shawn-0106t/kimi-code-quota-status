@@ -14,6 +14,8 @@
 ### 变更
 
 - i18n pass：`README.md` / `CHANGELOG.md` 改为英文为权威，中文译本迁至 `README.zh-CN.md` / `CHANGELOG.zh-CN.md`（随版本同步）；全部源码注释、doc comment 与开发者向测试/断言消息译为英文；内部开发文档（PLAN/REVIEW/REVIEW3/HANDOFF）文头补 English abstract（正文仍中文）；docs/SPEC 仍中文为权威、`SPEC.en.md` 随版本同步。纯文档/注释层变更，无行为变化。
+- `SECURITY.md` 由逐段中英混排改为「英文全文在上 + 中文全文在下」单文件结构（内容不变，纯排版调整）
+- `CONTRIBUTING.md` 在英文全文之下补全量中文译本，采用与 `SECURITY.md` 相同的「英文在上」单文件结构（英文段不变、仍为权威）
 
 ### 依赖
 
