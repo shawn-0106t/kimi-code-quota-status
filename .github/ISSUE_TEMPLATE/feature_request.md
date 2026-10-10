@@ -9,6 +9,7 @@ labels:
      Windows x64 only, no async runtime, and a strict dependency whitelist
      (docs/SPEC.md, section 11). Proposals outside that scope are likely to
      be declined. -->
+<!-- Tip: you may write your request in Chinese (中文) if that is easier. -->
 
 ## Problem to solve
 

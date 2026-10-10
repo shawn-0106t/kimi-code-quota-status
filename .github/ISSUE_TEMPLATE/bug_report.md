@@ -7,6 +7,7 @@ labels:
 
 <!-- Security vulnerabilities must NOT be reported here. Follow SECURITY.md
      and use GitHub's private vulnerability reporting instead. -->
+<!-- Tip: you may write your report in Chinese (中文) if that is easier. -->
 
 ## Description
 
