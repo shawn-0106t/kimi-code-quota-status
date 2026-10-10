@@ -49,6 +49,6 @@
 
 ## 约定
 
-- 语言约定（2026-10-06 i18n pass 起，2026-10-10 微调）：面向全球用户的门面与代码注释、doc comment 一律英文——其中 README/CHANGELOG/issue·PR 模板纯英文（中文译本在 `*.zh-CN.md`），CONTRIBUTING/SECURITY 为「英文在上 + 中文在下」单文件双语（英文段为权威）；内部过程文档（SPEC/PLAN/REVIEW 系/HANDOFF）与用户沟通用中文；技术术语保留 English。
+- 语言约定（2026-10-06 i18n pass 起，2026-10-10 微调）：面向全球用户的门面与代码注释、doc comment 一律英文——其中 README/CHANGELOG/issue·PR 模板纯英文（中文译本在 `*.zh-CN.md`），CONTRIBUTING/SECURITY/CODE_OF_CONDUCT 为「英文在上 + 中文在下」单文件双语（英文段为权威）；内部过程文档（SPEC/PLAN/REVIEW 系/HANDOFF）与用户沟通用中文；技术术语保留 English。
 - 仓库根即 cargo 工程根（P0 落地：`Cargo.toml`、`.cargo/config.toml`、`src/` lib+bin 双目标、`tests/golden.rs`、`testdata/golden/`；`.gitignore` 已含 `target/`）；`rust-toolchain.toml` 钉贡献者工具链（CI 仍用 stable，MSRV 以 Cargo.toml `rust-version` 为准）。
-- 设计文档集中在 docs/（SPEC/PLAN/REVIEW 系/HANDOFF；SPEC.en.md 为 SPEC 英文译本，PLAN/REVIEW 系/HANDOFF 文头带 English abstract）；根目录保留 AGENTS.md、README.md（英文为权威）+ README.zh-CN.md、CHANGELOG.md（英文为权威）+ CHANGELOG.zh-CN.md、CONTRIBUTING.md 与 SECURITY.md（均为上英下中单文件双语，英文段为权威）与 LICENSE/NOTICE；.github/ 下有英文 issue/PR 模板。
+- 设计文档集中在 docs/（SPEC/PLAN/REVIEW 系/HANDOFF；SPEC.en.md 为 SPEC 英文译本，PLAN/REVIEW 系/HANDOFF 文头带 English abstract）；根目录保留 AGENTS.md、README.md（英文为权威）+ README.zh-CN.md、CHANGELOG.md（英文为权威）+ CHANGELOG.zh-CN.md、CONTRIBUTING.md、SECURITY.md 与 CODE_OF_CONDUCT.md（均为上英下中单文件双语，英文段为权威）与 LICENSE/NOTICE；.github/ 下有英文 issue/PR 模板。

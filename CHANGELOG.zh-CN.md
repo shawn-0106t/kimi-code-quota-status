@@ -10,6 +10,7 @@
 
 - 面向全球用户的贡献者基建：英文 `CONTRIBUTING.md`（构建/测试门禁、golden parity 的 UTC+08:00 时区要求、golden 数据政策、文档同步义务）、GitHub issue 模板（`.github/ISSUE_TEMPLATE/`）与 PR 模板、`rust-toolchain.toml` 钉贡献者工具链（CI 仍用最新 stable；Cargo.toml 的 MSRV 不变）
 - Cargo 包元数据：`repository`、`keywords`、`categories`（为 crates.io 可发现性铺路）
+- `CODE_OF_CONDUCT.md`：Contributor Covenant v2.1，上英下中单文件；行为准则违规举报走 GitHub 私密联系维护者
 
 ### 变更
 

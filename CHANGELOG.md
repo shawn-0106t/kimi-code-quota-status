@@ -12,6 +12,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - Global-audience contributor infrastructure: English `CONTRIBUTING.md` (build/test gates, the golden-parity UTC+08:00 requirement, golden-data policy, docs-sync obligations), GitHub issue templates (`.github/ISSUE_TEMPLATE/`) and a PR template, and `rust-toolchain.toml` pinning the contributor toolchain (CI stays on latest stable; the MSRV in Cargo.toml is unchanged)
 - Cargo package metadata: `repository`, `keywords`, `categories` (crates.io discoverability groundwork)
+- `CODE_OF_CONDUCT.md`: Contributor Covenant v2.1 in the single-file English-first-then-Chinese layout; conduct reports go privately to the maintainer on GitHub
 
 ### Changed
 

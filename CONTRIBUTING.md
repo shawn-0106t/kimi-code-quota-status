@@ -21,6 +21,8 @@ Development and CI both assume **Windows x64** - the only supported target.
   endpoint.
 - **Security issues never go to public issues.** Use the private disclosure
   channel described in [SECURITY.md](SECURITY.md).
+- **Be excellent to each other.** All community spaces follow the
+  [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Getting started
 
@@ -127,6 +129,7 @@ CLI 的 statusline footer 显示 Kimi For Coding 套餐额度。开发与 CI 均
   读取本地凭证并发往所配置的端点。
 - **安全问题绝不进公开 issue。** 请走 [SECURITY.md](SECURITY.md) 描述的
   私密披露渠道。
+- **互相尊重。** 所有社区空间遵循[行为准则](CODE_OF_CONDUCT.md)。
 
 ## 上手
 
