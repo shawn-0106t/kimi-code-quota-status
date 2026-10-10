@@ -1,8 +1,8 @@
 # quota-status 契约文档（SPEC）
 
 - 项目：quota-status —— Rust 实现的 Kimi Code CLI statusline 额度显示器（单二进制 `quota-status.exe`）
-- 版本：v1.5.2（2026-10-03；§11 CI 工程化条目补记：两 workflow 全部 job 显式声明最小 `permissions`（ci.yml 各 job `contents: read`、release.yml workflow 级 `contents: write`）——修复 CodeQL default setup 首扫 medium 告警 `actions/missing-workflow-permissions`；纯工程化记录，无行为变更）
-- 版本历史：v1.5.1（2026-10-02；二次独立 code review（k3-256k/max）后修订：§7.7 决策 B 补记 sessionId 字符白名单 `[A-Za-z0-9_-]` 语义、决策 E 补记 NotFound 空态豁免、§10.1 补失败语义与空态两单测项；同轮代码修复：任务文件读取/解析失败改为短路零计数段整体省略——Major 契约冲突经用户仲裁修代码对齐契约，详见 CHANGELOG [1.1.0] 修复）；v1.5（2026-10-02；追加 tasks/agents 徽章：§7.7 数据源与防御细则（决策 A–E）、§7.1/§7.2/§8/§10.1/§12 连带更新，含决策 C 按 kind 分裂与 question 不计入两轮仲裁定案；完整变更说明见 git 历史）；v1.4（2026-10-02；单色渲染开关：§7.2 colors=false 单色语义、§7.4 分隔符纯字符形态、§8 [render] colors 键、§10.1 单测项）；v1.3.2（2026-10-01；§11 补录 CI/Release 工程化设施与 CHANGELOG 约定）；v1.3.1（2026-10-01；golden 测试数据内化本仓库 `testdata/golden/`，CI 自足，§10.2 同步）；v1.3（2026-10-01；第三轮独立 code review 后修订：§4.1 新鲜判定钉死为纯 mtime 语义、§5.1 错误归类按 send/body 阶段细分、§9 缓存损坏行同步表述）；v1.2（2026-10-01；P0–P5 实现落定后修订）；v1.1（2026-10-01；按第二轮复核 REVIEW.md 的 8 项发现修订 F1–F8）；v1.0
+- 版本：v1.6（2026-10-10；新增 §4.5 版本查询模式 `--version`；§11 依赖白名单扩入 build-dependency `winresource`——经 `build.rs` 嵌入 Windows VERSIONINFO 版本资源，版本号取 `CARGO_PKG_VERSION`，与 `--version` 输出及 release workflow 的 tag↔version 校验同源一致；渲染/取数路径无变化）
+- 版本历史：v1.5.2（2026-10-03；§11 CI 工程化条目补记：两 workflow 全部 job 显式声明最小 `permissions`（ci.yml 各 job `contents: read`、release.yml workflow 级 `contents: write`）——修复 CodeQL default setup 首扫 medium 告警 `actions/missing-workflow-permissions`；纯工程化记录，无行为变更）；v1.5.1（2026-10-02；二次独立 code review（k3-256k/max）后修订：§7.7 决策 B 补记 sessionId 字符白名单 `[A-Za-z0-9_-]` 语义、决策 E 补记 NotFound 空态豁免、§10.1 补失败语义与空态两单测项；同轮代码修复：任务文件读取/解析失败改为短路零计数段整体省略——Major 契约冲突经用户仲裁修代码对齐契约，详见 CHANGELOG [1.1.0] 修复）；v1.5（2026-10-02；追加 tasks/agents 徽章：§7.7 数据源与防御细则（决策 A–E）、§7.1/§7.2/§8/§10.1/§12 连带更新，含决策 C 按 kind 分裂与 question 不计入两轮仲裁定案；完整变更说明见 git 历史）；v1.4（2026-10-02；单色渲染开关：§7.2 colors=false 单色语义、§7.4 分隔符纯字符形态、§8 [render] colors 键、§10.1 单测项）；v1.3.2（2026-10-01；§11 补录 CI/Release 工程化设施与 CHANGELOG 约定）；v1.3.1（2026-10-01；golden 测试数据内化本仓库 `testdata/golden/`，CI 自足，§10.2 同步）；v1.3（2026-10-01；第三轮独立 code review 后修订：§4.1 新鲜判定钉死为纯 mtime 语义、§5.1 错误归类按 send/body 阶段细分、§9 缓存损坏行同步表述）；v1.2（2026-10-01；P0–P5 实现落定后修订）；v1.1（2026-10-01；按第二轮复核 REVIEW.md 的 8 项发现修订 F1–F8）；v1.0
 - 本文档与已定决策清单冲突时，以决策清单为准（本文已按决策清单如实收录；两处事实勘误见 §2.3）
 - 路径约定：所有 `path:line` 引用相对本仓库根（即本文件所在 `docs/` 目录的上一级）
 - 英文译本：[`SPEC.en.md`](SPEC.en.md)（随版本同步；两文不一致时以本文为准）
@@ -168,6 +168,12 @@ command = "C:\\tools\\quota-status.exe"
 - 派生子进程：`Command::new(<自身绝对路径>).arg("--refresh")`，`creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)`（0x08000000 | 0x00000008），stdio 三路 DEVNULL。语义对应 Python 原型的 `start_new_session` + DEVNULL（quota-status.py:146-149）。
 - 父进程 spawn 后立即继续渲染并退出；刷新任务独立存活。渲染进程远早于 300ms 超时退出，宿主的 `taskkill /T` 不会波及 detached 子进程。
 - **防刷新风暴**：渲染模式在派生前把缓存 mtime 回拨为 `now - TTL + 30s`（quota-status.py:143-145 同款语义）——后续渲染在 30s 内看到"未过期"，不再派生；若刷新失败（缓存未被改写），30s 后自动重试。多会话并发渲染读到同一回拨后 mtime，同样只派生有限次。
+
+### 4.5 版本查询模式 `--version`（v1.6）
+
+- 打印 `quota-status <CARGO_PKG_VERSION>` 到 stdout 后 exit 0；不读 stdin、不触碰凭证/缓存/任何文件 IO。
+- 与 `build.rs` 嵌入的 Windows VERSIONINFO 版本资源（`winresource`，§11）同源于编译期 `CARGO_PKG_VERSION`：`tag = Cargo.toml = exe 文件属性 = --version 输出` 四重一致，与 release workflow 的 tag↔version 校验互补。
+- 用途：部署后核验版本——`deploy.ps1` 复制到 `~/.kimi-code/bin/` 后无需 sha256 对比即可确认版本。
 
 ---
 
@@ -431,7 +437,7 @@ tasks 徽章（v1.5）**不新增任何配置键**：开关即 order——从 or
 
 - cargo 单 crate；仅 Windows x64 目标（`x86_64-pc-windows-msvc` + `.cargo/config.toml` 里 `rustflags = ["-C", "target-feature=+crt-static"]` 静态链接 CRT），产物无 runtime 依赖。
 - release profile：`opt-level = "s"`、`lto = true`、`codegen-units = 1`、`strip = true`、`panic = "abort"`。
-- 依赖取向（控制体积）：`serde`/`serde_json`、`chrono`、`toml`（quota-bar.toml 与 config.toml 的 thinking/models 段）、HTTP 用阻塞式轻量 client（首选 `ureq` + rustls + 打包根证书；若换 `reqwest` 必须 blocking + rustls），`filetime`（mtime 回拨）、`windows-sys`（console 宽度、creation flags）。**不引入 tokio/async**——取数是一次性阻塞调用，渲染是派生后即退出。**v1.5 依赖白名单不变**：tasks 徽章的 pid 存活校验复用既有 `windows-sys`（`Win32_System_Threading` feature：`OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` + `GetExitCodeProcess`，该 feature 在工程依赖声明中已启用），不新增 crate。
+- 依赖取向（控制体积）：`serde`/`serde_json`、`chrono`、`toml`（quota-bar.toml 与 config.toml 的 thinking/models 段）、HTTP 用阻塞式轻量 client（首选 `ureq` + rustls + 打包根证书；若换 `reqwest` 必须 blocking + rustls），`filetime`（mtime 回拨）、`windows-sys`（console 宽度、creation flags）。**不引入 tokio/async**——取数是一次性阻塞调用，渲染是派生后即退出。**v1.5 依赖白名单不变**：tasks 徽章的 pid 存活校验复用既有 `windows-sys`（`Win32_System_Threading` feature：`OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` + `GetExitCodeProcess`，该 feature 在工程依赖声明中已启用），不新增 crate。**v1.6 扩入 build-dependency `winresource`**（传递依赖仅 `version_check`；只参与构建、不进产物）：经 `build.rs` 嵌入 Windows VERSIONINFO 版本资源（FileDescription/ProductName/OriginalFilename/LegalCopyright 与版本号，版本取 `CARGO_PKG_VERSION`，见 §4.5），资源约 1KB 落 `.rsrc` 段，`strip = true`（仅剥符号）不影响；非 Windows 目标时 build.rs 直接跳过。
 - 体积预算：静态 exe **≤5MB**（v1.2：原"3–5MB"为撰写时的预估区间，实现实测 1,788,928 字节 ≈1.7MB，预算按上限约束执行）；超预算时优先换 HTTP/TLS 后端。
 - 渲染路径禁网络、禁重 IO（<10ms 预算）；取数路径 HTTP 超时 8s。
 - stdout 强制 UTF-8（errors=replace 语义，§7.6）；detached 子进程 `CREATE_NO_WINDOW | DETACHED_PROCESS` + stdio DEVNULL（§4.4）。

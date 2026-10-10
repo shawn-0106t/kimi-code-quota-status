@@ -13,12 +13,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Global-audience contributor infrastructure: English `CONTRIBUTING.md` (build/test gates, the golden-parity UTC+08:00 requirement, golden-data policy, docs-sync obligations), GitHub issue templates (`.github/ISSUE_TEMPLATE/`) and a PR template, and `rust-toolchain.toml` pinning the contributor toolchain (CI stays on latest stable; the MSRV in Cargo.toml is unchanged)
 - Cargo package metadata: `repository`, `keywords`, `categories` (crates.io discoverability groundwork)
 - `CODE_OF_CONDUCT.md`: Contributor Covenant v2.1 in the single-file English-first-then-Chinese layout; conduct reports go privately to the maintainer on GitHub
+- Windows VERSIONINFO resource embedded via `build.rs` + `winresource` (build-only dependency, whitelisted in SPEC section 11): the exe's file properties now show FileVersion/ProductVersion (sourced from CARGO_PKG_VERSION), ProductName, FileDescription, and copyright — `tag = Cargo.toml = exe properties` stay consistent; plus a `--version` flag (SPEC section 4.5) printing `quota-status <version>` with no stdin read or other IO (~12 KB size increase, well within the 5 MB budget)
 
 ### Changed
 
 - i18n pass for global users: `README.md` / `CHANGELOG.md` are now English-first (authoritative); the Chinese renditions moved to `README.zh-CN.md` / `CHANGELOG.zh-CN.md` (synced per version); all source comments, doc comments, and developer-facing test/assert messages were translated to English; the internal dev docs (PLAN/REVIEW/REVIEW3/HANDOFF) gained English abstracts (bodies remain Chinese); docs/SPEC stays Chinese-authoritative with `SPEC.en.md` synced. Docs/comments-only — no behavior change.
 - `SECURITY.md` restructured from interleaved per-section bilingual text into a single file with the full English section first, then the full Chinese section (content unchanged; layout only)
 - `CONTRIBUTING.md` gained a full Chinese rendition appended below the English text, in the same single-file English-first layout as `SECURITY.md` (English section unchanged and remains authoritative)
+- Issue templates gained a guidance comment telling reporters they may write in Chinese (GitHub displays template comments while editing and strips them on submit)
 
 ### Dependencies
 

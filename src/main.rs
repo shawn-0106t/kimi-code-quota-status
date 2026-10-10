@@ -1,9 +1,10 @@
 // quota-status -- Kimi Code CLI statusline quota display (SPEC §1).
 //
-// Three run modes (SPEC §4):
+// Four run modes (SPEC §4):
 //   Render mode (no args): stdin snapshot + local cache -> assemble one line of ANSI text, exit in milliseconds;
 //   Fetch mode --refresh: credential chain -> GET /usages -> defensive parsing -> atomic cache write;
-//   Self-check mode --test-fetch: same as fetch but no cache write, result printed as pretty JSON to stdout.
+//   Self-check mode --test-fetch: same as fetch but no cache write, result printed as pretty JSON to stdout;
+//   Version query mode --version: print "quota-status <CARGO_PKG_VERSION>" and exit (no stdin, no file IO).
 //
 // All implementation lives in the lib crate (src/lib.rs); this file only does argv dispatch.
 
@@ -26,11 +27,11 @@ fn main() {
     // args_os: non-Unicode argv does not panic (args() would; under panic=abort the host falls back to the built-in footer)
     let mode = std::env::args_os().nth(1);
     let mode = mode.as_deref().and_then(std::ffi::OsStr::to_str);
-    let cfg = load_config();
     match mode {
         // Fetch mode (SPEC §4.2): credential chain -> GET /usages (8s timeout, configurable) ->
         // defensive parsing -> atomic cache write; on any failure no cache write (LKG + fast-retry), always exit 0
         Some("--refresh") => {
+            let cfg = load_config();
             // Clean up orphan tmps (leftovers from earlier refreshes killed between writing tmp and rename);
             // threshold 60s: an in-flight refresh's tmp lives <1s, so it is never mistakenly deleted
             if let Some(kimi) = credentials::kimi_home() {
@@ -49,11 +50,18 @@ fn main() {
         // Self-check mode (SPEC §4.3): one full fetch, printed to stdout as pretty JSON (2-space
         // indent camelCase), no stdin read, no cache write
         Some("--test-fetch") => {
+            let cfg = load_config();
             let r = quota::fetch(cfg.base_url.as_deref(), cfg.http_timeout_seconds);
             println!("{}", r.to_pretty_json());
         }
+        // Version query mode: print "<name> <version>" and exit 0; no stdin read, no other IO.
+        // Same source as the embedded VERSIONINFO resource (CARGO_PKG_VERSION at compile time)
+        Some("--version") => {
+            println!("quota-status {}", env!("CARGO_PKG_VERSION"));
+        }
         // Render mode (SPEC §4.1)
         _ => {
+            let cfg = load_config();
             // Step 1: read stdin to EOF then parse; invalid input treated as empty payload
             let mut buf = Vec::new();
             let _ = std::io::Read::read_to_end(&mut std::io::stdin(), &mut buf);

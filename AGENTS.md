@@ -16,6 +16,7 @@
 - 单色开关（v1.4，P6）：`quota-bar.toml [render] colors = false` 时渲染输出纯文本（无任何 SGR），整行由宿主包装为主题 text 色（与 context 行同色，随 /theme 联动）；默认 true 多彩。
 - tasks/agents 徽章（v1.5，P7）：`src/tasks.rs` 扫描 `<kimi_home>/sessions/` 探测 payload sessionId 定位会话目录（workspace 探测 ≤64、任务 json 读取 ≤32、单文件 ≤64KB，超限截断计数非失败），按 kind 分流计数——`kind=agent` running 即计入 agent 侧（无 pid 字段，接受崩溃遗留的陈旧误报，宿主重启加载标 lost 自愈）；其余一切 kind 须经 `OpenProcess` + `GetExitCodeProcess` pid 存活校验（pid 缺失/非正整数视同缺失不计入，question 恒不计入）。计数在 `render_line` 外层算一次传入 4 个降级变体；sessionId 校验为字符白名单 `[A-Za-z0-9_-]`（宿主真值 `session_<uuid>` 恒在其内；SPEC v1.5.1 §7.7 决策 B 已收录——一步覆盖三条拒绝规则并封堵盘符相对路径/裸 `.` 等残余穿越面，P7 首轮 review Minor 加固）；失败语义（v1.5.1 钉死，二次 review Major 修复）：任务文件读取/解析失败短路返回零计数、段整体省略（不得保留部分计数），目录不存在属空态（`agents/<id>/tasks/` 缺失视同无任务跳过，其余 IO 错误仍短路省略）；默认 order 补 `"tasks"`，删去即关闭整段并跳过扫描。
 - 错误分类：超时（含 body 阶段）→ `TaskCanceledException`；非 2xx 与其余传输错误 → `HttpRequestException`；body 阶段非超时错误（连接 reset、非法 UTF-8）→ `JsonException`（SPEC §5.1 v1.3 钉死）。
+- 版本资源与 `--version`（SPEC v1.6）：`build.rs` 用 build-dep `winresource` 嵌入 Windows VERSIONINFO（版本取 `CARGO_PKG_VERSION`，约 1KB 落 `.rsrc` 段，`strip` 不剥；非 Windows 目标跳过）；`--version` 打印 `quota-status <版本>`、不读 stdin——`tag = Cargo.toml = exe 属性 = CLI 输出` 四重一致。
 
 ## 权威文档（动手前必读）
 
@@ -49,6 +50,6 @@
 
 ## 约定
 
-- 语言约定（2026-10-06 i18n pass 起，2026-10-10 微调）：面向全球用户的门面与代码注释、doc comment 一律英文——其中 README/CHANGELOG/issue·PR 模板纯英文（中文译本在 `*.zh-CN.md`），CONTRIBUTING/SECURITY/CODE_OF_CONDUCT 为「英文在上 + 中文在下」单文件双语（英文段为权威）；内部过程文档（SPEC/PLAN/REVIEW 系/HANDOFF）与用户沟通用中文；技术术语保留 English。
+- 语言约定（2026-10-06 i18n pass 起，2026-10-10 微调）：面向全球用户的门面与代码注释、doc comment 一律英文——其中 README/CHANGELOG 纯英文（中文译本在 `*.zh-CN.md`）、issue·PR 模板英文（issue 模板附「可中文填写」指导注释，GitHub 提交时自动剥离），CONTRIBUTING/SECURITY/CODE_OF_CONDUCT 为「英文在上 + 中文在下」单文件双语（英文段为权威）；内部过程文档（SPEC/PLAN/REVIEW 系/HANDOFF）与用户沟通用中文；技术术语保留 English。
 - 仓库根即 cargo 工程根（P0 落地：`Cargo.toml`、`.cargo/config.toml`、`src/` lib+bin 双目标、`tests/golden.rs`、`testdata/golden/`；`.gitignore` 已含 `target/`）；`rust-toolchain.toml` 钉贡献者工具链（CI 仍用 stable，MSRV 以 Cargo.toml `rust-version` 为准）。
 - 设计文档集中在 docs/（SPEC/PLAN/REVIEW 系/HANDOFF；SPEC.en.md 为 SPEC 英文译本，PLAN/REVIEW 系/HANDOFF 文头带 English abstract）；根目录保留 AGENTS.md、README.md（英文为权威）+ README.zh-CN.md、CHANGELOG.md（英文为权威）+ CHANGELOG.zh-CN.md、CONTRIBUTING.md、SECURITY.md 与 CODE_OF_CONDUCT.md（均为上英下中单文件双语，英文段为权威）与 LICENSE/NOTICE；.github/ 下有英文 issue/PR 模板。

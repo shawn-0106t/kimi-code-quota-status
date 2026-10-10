@@ -22,6 +22,7 @@ host (1s throttle, 300ms hard timeout) ──spawn──> quota-status.exe (rend
 - **Render mode** (default): assembles one line of ANSI text purely from the local cache; exits in milliseconds; no network.
 - **Fetch mode** `--refresh`: credential chain → GET /usages → defensive parsing → atomic cache write; any failure writes nothing to the cache (LKG preserved) and retries after 30s (fast-retry).
 - **Self-check mode** `--test-fetch`: performs one full fetch and prints the result as pretty JSON to stdout; never writes the cache.
+- **Version query mode** `--version`: prints `quota-status <version>` (same source as the exe's file properties) and exits; handy for verifying a deployed copy.
 - The host is event-driven: idle sessions never invoke the command, so the "1-minute refresh" holds in active sessions; cache TTL defaults to 60s.
 - Credentials are read-only: token freshness relies on the running CLI — this tool never refreshes the OAuth token itself.
 

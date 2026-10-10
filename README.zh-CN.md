@@ -20,6 +20,7 @@ Kimi Code CLI 的 statusline 额度显示器：静态单二进制 `quota-status.
 - **渲染模式**（默认）：只读本地缓存拼一行 ANSI 文本，毫秒级退出，禁网络。
 - **取数模式** `--refresh`：凭证链 → GET /usages → 防御解析 → 原子写缓存；任何失败不写缓存（LKG 保留），30s fast-retry。
 - **自检模式** `--test-fetch`：完整取数一次，pretty JSON 打印到 stdout，不写缓存。
+- **版本查询模式** `--version`：打印 `quota-status <版本>`（与 exe 文件属性同源）后退出，便于核验已部署副本的版本。
 - 宿主是事件驱动的：空闲会话不调用 command，"1 分钟刷新"在活跃会话成立；缓存 TTL 默认 60s。
 - 凭证只读不写：token 新鲜度依赖运行中的 CLI，本工具绝不自行刷新 OAuth token。
 

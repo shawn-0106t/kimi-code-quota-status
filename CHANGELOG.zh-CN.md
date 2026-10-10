@@ -11,12 +11,14 @@
 - 面向全球用户的贡献者基建：英文 `CONTRIBUTING.md`（构建/测试门禁、golden parity 的 UTC+08:00 时区要求、golden 数据政策、文档同步义务）、GitHub issue 模板（`.github/ISSUE_TEMPLATE/`）与 PR 模板、`rust-toolchain.toml` 钉贡献者工具链（CI 仍用最新 stable；Cargo.toml 的 MSRV 不变）
 - Cargo 包元数据：`repository`、`keywords`、`categories`（为 crates.io 可发现性铺路）
 - `CODE_OF_CONDUCT.md`：Contributor Covenant v2.1，上英下中单文件；行为准则违规举报走 GitHub 私密联系维护者
+- 经 `build.rs` + `winresource`（仅构建期依赖，SPEC §11 白名单收录）嵌入 Windows VERSIONINFO 版本资源：exe 文件「详细信息」现在显示 FileVersion/ProductVersion（取自 CARGO_PKG_VERSION）、ProductName、FileDescription 与版权——`tag = Cargo.toml = exe 属性`保持一致；并新增 `--version` flag（SPEC §4.5）输出 `quota-status <版本>`，不读 stdin、无其他 IO（体积增加约 12KB，远在 5MB 预算内）
 
 ### 变更
 
 - i18n pass：`README.md` / `CHANGELOG.md` 改为英文为权威，中文译本迁至 `README.zh-CN.md` / `CHANGELOG.zh-CN.md`（随版本同步）；全部源码注释、doc comment 与开发者向测试/断言消息译为英文；内部开发文档（PLAN/REVIEW/REVIEW3/HANDOFF）文头补 English abstract（正文仍中文）；docs/SPEC 仍中文为权威、`SPEC.en.md` 随版本同步。纯文档/注释层变更，无行为变化。
 - `SECURITY.md` 由逐段中英混排改为「英文全文在上 + 中文全文在下」单文件结构（内容不变，纯排版调整）
 - `CONTRIBUTING.md` 在英文全文之下补全量中文译本，采用与 `SECURITY.md` 相同的「英文在上」单文件结构（英文段不变、仍为权威）
+- issue 模板补一行指导注释：报告可用中文撰写（GitHub 在编辑时显示模板注释、提交时自动剥离）
 
 ### 依赖
 
