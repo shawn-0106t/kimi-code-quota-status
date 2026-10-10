@@ -123,6 +123,14 @@ golden 输入 payload 与期望值复刻自 `repos/kimi-planbar-tui`（只读参
 
 渲染边界抽样（实装当日）：空 stdin → exit 0 按空 payload 降级；yolo→红、gitBranch null→省略；空锚定缓存 → mtime 回拨（精确 now−30s）→ detached refresh → 原子写缓存 401 字节，全链路观测通过。渲染端到端 20 次均值 ≈44ms（Git Bash 管道测量，含 shell fork 开销，为高估方向）< 50ms。
 
+### 版本资源验收（2026-10-10，v1.2.0）
+
+| 项 | 结果 |
+|---|---|
+| 文件属性 | FileVersion/ProductVersion `1.2.0`、ProductName、FileDescription、版权、OriginalFilename 在资源管理器「详细信息」页全部可见（`winresource` 嵌入 VERSIONINFO，+12,288 字节，`.rsrc` 段不受 `strip` 影响）；独立 code review 结论「可交付」，4 Minor 文档/注释类已修 |
+| `--version`（§4.5） | 输出 `quota-status 1.2.0`，exit 0，不读 stdin、零文件 IO（配置加载已下移进真正用配置的三个模式） |
+| 部署 | `scripts/deploy.ps1` 重新部署 `~/.kimi-code/bin/quota-status.exe`（1.2.0，sha256 校验通过）；tui.toml 不变；部署副本渲染冒烟正常输出额度行；`tag = Cargo.toml = exe 属性 = --version` 四重一致性端到端验证通过（release workflow 的 tag↔version 校验绿） |
+
 ### P7 tasks/agents 徽章验收（2026-10-02，临时 KIMI_CODE_HOME 隔离环境）
 
 | 项 | 结果 |

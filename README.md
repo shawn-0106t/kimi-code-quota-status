@@ -126,6 +126,14 @@ The golden input payloads and expected outputs are replicated from `repos/kimi-p
 
 Render edge sampling (deployment day): empty stdin → exit 0, degraded as an empty payload; yolo→red, gitBranch null→omitted; empty anchor cache → mtime rewind (exactly now−30s) → detached refresh → atomic 401-byte cache write — the whole chain observed passing. Render end-to-end 20-run mean ≈44ms (measured through Git Bash pipes including shell fork overhead, an over-estimate) < 50ms.
 
+### Version-resource acceptance (2026-10-10, v1.2.0)
+
+| Item | Result |
+|---|---|
+| File properties | FileVersion/ProductVersion `1.2.0`, ProductName, FileDescription, copyright, OriginalFilename all visible in Explorer's Details tab (VERSIONINFO via `winresource`, +12,288 bytes, `.rsrc` survives `strip`); independent code review verdict "deliverable", 4 Minor doc/comment fixes applied |
+| `--version` (§4.5) | prints `quota-status 1.2.0`, exit 0, no stdin read, zero file IO (config loading moved into the three config-consuming modes) |
+| Deployment | `scripts/deploy.ps1` re-deployed `~/.kimi-code/bin/quota-status.exe` (1.2.0, sha256 verified); tui.toml unchanged; deployed-copy render smoke test outputs the quota line normally; `tag = Cargo.toml = exe properties = --version` four-way consistency verified end-to-end (release workflow tag↔version check green) |
+
 ### P7 tasks/agents badge acceptance (2026-10-02, isolated environment with a temporary KIMI_CODE_HOME)
 
 | Item | Result |
