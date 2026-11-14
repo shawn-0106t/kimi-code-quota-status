@@ -1,12 +1,15 @@
 # quota-status
 
+> [!WARNING]
+> **This project is no longer maintained.** It has been superseded by [quota-tray](https://github.com/shawn-0106t/quota-tray) — a Windows tray app that shows Kimi Code plan quota and DeepSeek balance/usage in one panel. This repository is archived and read-only; existing releases remain downloadable.
+
 [![CI](https://github.com/shawn-0106t/kimi-code-quota-status/actions/workflows/ci.yml/badge.svg)](https://github.com/shawn-0106t/kimi-code-quota-status/actions/workflows/ci.yml) [![GitHub Release](https://img.shields.io/github/v/release/shawn-0106t/kimi-code-quota-status)](https://github.com/shawn-0106t/kimi-code-quota-status/releases)
 
 [简体中文](README.zh-CN.md) | English (this is the authoritative version)
 
 > The Chinese rendition ([README.zh-CN.md](README.zh-CN.md)) is synced per version. In case of any divergence, this English version prevails.
 
-A statusline quota display for the Kimi Code CLI: a static single binary `quota-status.exe` (Rust, Windows x64) that shows your Kimi For Coding plan usage (5h / week / month + reset time) and background-task badges (`[N task(s) running]` / `[M agent(s) running]`) on footer line 1, with customizable field switches and in-line order.
+A statusline quota display for the Kimi Code CLI (**discontinued**; the maintained successor is [quota-tray](https://github.com/shawn-0106t/quota-tray)): a static single binary `quota-status.exe` (Rust, Windows x64) that shows your Kimi For Coding plan usage (5h / week / month + reset time) and background-task badges (`[N task(s) running]` / `[M agent(s) running]`) on footer line 1, with customizable field switches and in-line order.
 
 ## How it works
 

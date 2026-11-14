@@ -1,10 +1,13 @@
 # quota-status
 
+> [!WARNING]
+> **本项目已停止维护。** 后继项目为 [quota-tray](https://github.com/shawn-0106t/quota-tray)——在同一面板显示 Kimi Code 套餐额度与 DeepSeek 余额/用量的 Windows 托盘应用。本仓库已归档、只读；历史 release 仍可下载。
+
 [![CI](https://github.com/shawn-0106t/kimi-code-quota-status/actions/workflows/ci.yml/badge.svg)](https://github.com/shawn-0106t/kimi-code-quota-status/actions/workflows/ci.yml) [![GitHub Release](https://img.shields.io/github/v/release/shawn-0106t/kimi-code-quota-status)](https://github.com/shawn-0106t/kimi-code-quota-status/releases)
 
 [English（权威版本）](README.md) | 简体中文（本文为随版本同步的中文译本，不一致时以英文版为准）
 
-Kimi Code CLI 的 statusline 额度显示器：静态单二进制 `quota-status.exe`（Rust，Windows x64），在 footer 第 1 行显示 Kimi For Coding 套餐额度（5h / week / month + reset 时间）与后台任务徽章（`[N task(s) running]` / `[M agent(s) running]`），字段开关与行内顺序可自定义。
+Kimi Code CLI 的 statusline 额度显示器（**已停止维护**，后继项目见 [quota-tray](https://github.com/shawn-0106t/quota-tray)）：静态单二进制 `quota-status.exe`（Rust，Windows x64），在 footer 第 1 行显示 Kimi For Coding 套餐额度（5h / week / month + reset 时间）与后台任务徽章（`[N task(s) running]` / `[M agent(s) running]`），字段开关与行内顺序可自定义。
 
 ## 工作原理
 
